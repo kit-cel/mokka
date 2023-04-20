@@ -1,0 +1,163 @@
+[build-system]
+requires = [
+    "flit_core",
+    "wheel",
+    "oldest-supported-numpy",
+]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "mokka"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "COPYING"}
+authors = [
+    {name = "Andrej Rode", email = "rode@kit.edu"},
+    {name = "Shrinivas Chimmalgi", email="shrinivas.chimmalgi@kit.edu"},
+    {name = "Benedikt Geiger", email="benedikt.geiger@kit.edu"},
+    {name = "Laurent Schmalen"}
+]
+
+dependencies = [
+  "attrs",
+  "numpy",
+  "torch",
+  "matplotlib",
+  "scipy",
+  "pyqtgraph",
+]
+version = "1.0.0"
+description = "A machine learning toolbox for communications engineering"
+keywords = ["communications engineering", "machine learning"]
+# dynamic = ["version", "description"]
+
+[project.optional-dependencies]
+torch = [
+    "torch",
+    "torchaudio",
+]
+tf = [
+    "sionna"
+]
+dev = [
+    "pre-commit",
+    "pytest",
+    "black",
+    "flake8",
+    "pylint",
+    "python-lsp-server[all]",
+    "pyls-flake8",
+    "python-lsp-black",
+    "sphinx",
+    "sphinx-pyproject",
+    "sphinx_rtd_theme"
+]
+remotelog = [
+    "wandb",
+]
+
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+]
+filterwarnings = [
+    "ignore",
+    "default:::mokka",
+]
+
+[tool.sphinx-pyproject]
+language = "en"
+package_root = "mokka"
+extensions = [
+    "sphinx.ext.autodoc",
+    "sphinx_rtd_theme",
+    "sphinx.ext.mathjax",
+]
+templates_path = [ "_templates", ]
+html_static_path = [ "_static", ]
+source_suffix = ".rst"
+master_doc = "index"
+html_theme = "sphinx_rtd_theme"
+autodoc_exclude_members = [
+    "__dict__",
+    "__class__",
+    "__dir__",
+    "__weakref__",
+    "__module__",
+    "__annotations__",
+    "__orig_bases__",
+    "__parameters__",
+    "__subclasshook__",
+    "__init_subclass__",
+    "__attrs_attrs__",
+    "__init__",
+    "__new__",
+    "__getnewargs__",
+    "__abstractmethods__",
+    "__hash__",
+]
+[tool.tox]
+legacy_tox_ini = """
+[tox]
+description = list of environments against which tox runs the tests
+envlist =
+    flake8
+    black
+    pydocstyle
+    py39
+    py310
+    py311
+
+# See https://tox.readthedocs.io/en/latest/example/package.html#flit
+isolated_build = True
+isolated_build_env = build
+skip_missing_interpreters = False
+
+[gh-actions]
+python =
+    3.9: py39
+    3.10: flake8, black, pydocstyle, py310
+    3.11: py311
+
+[testenv]
+# install pytest in the virtualenv where commands will be executed
+setenv =
+    PYTHONUNBUFFERED = yes
+    PIP_PREFER_BINARY = 1
+passenv = *
+extras =
+  torch
+  dev
+# This is already the default, but we include it here
+# to remind ourselves that usedevelop is incompatible with flit,
+# see https://tox.readthedocs.io/en/latest/config.html#conf-usedevelop
+usedevelop = False
+commands =
+    pytest {env:PYTEST_MARKERS:} {env:PYTEST_EXTRA_ARGS:} {posargs:-vv}
+
+[testenv:flake8]
+description = this environments checks for flake8 and black
+deps =
+    black==22.3.0
+    flake8
+    build
+skip_install = true
+commands =
+    flake8 src tests
+
+[testenv:pydocstyle]
+description = this environments checks formatting with pydocstyle
+deps =
+    pydocstyle
+skip_install = true
+commands =
+    pydocstyle --count src/
+
+[testenv:black]
+description = reformats the code using black
+deps =
+    black==22.3.0
+skip_install = true
+commands =
+    black src tests
+"""
