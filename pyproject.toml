@@ -15,7 +15,12 @@ authors = [
     {name = "Andrej Rode", email = "rode@kit.edu"},
     {name = "Shrinivas Chimmalgi", email="shrinivas.chimmalgi@kit.edu"},
     {name = "Benedikt Geiger", email="benedikt.geiger@kit.edu"},
-    {name = "Laurent Schmalen"}
+    {name = "Laurent Schmalen", email="laurent.schmalen@kit.edu"},
+]
+maintainers = [
+    {name = "Andrej Rode", email = "rode@kit.edu"},
+    {name = "Shrinivas Chimmalgi", email="shrinivas.chimmalgi@kit.edu"},
+    {name = "Benedikt Geiger", email="benedikt.geiger@kit.edu"},
 ]
 
 dependencies = [
@@ -26,7 +31,7 @@ dependencies = [
   "scipy",
   "pyqtgraph",
 ]
-version = "1.0.0"
+version = "1.0.1"
 description = "A machine learning toolbox for communications engineering"
 keywords = ["communications engineering", "machine learning"]
 # dynamic = ["version", "description"]

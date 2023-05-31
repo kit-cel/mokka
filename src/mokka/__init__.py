@@ -14,7 +14,7 @@ In the case of TensorFlow the functions are implemented in conjunction
 with the framework sionna.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 
 from . import utils  # noqa
