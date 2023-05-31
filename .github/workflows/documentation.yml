@@ -34,15 +34,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install ".[dev]"
+      - name: Rebuild documentation
+        run: |
+          docs/make-docs.sh
       - name: Cache documentation directory
-        uses: actions/cache@v3
+        uses: actions/cache/save@v3
         with:
           path: |
             ./_build/html
           key: docs
-      - name: Rebuild documentation
-        run: |
-          docs/make-docs.sh
+
   deploy:
     environment:
       name: github-pages
@@ -50,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Restore cache documentation directory
-        uses: actions/cache@v3
+        uses: actions/cache/restore@v3
         with:
           path: |
             ./_build/html
