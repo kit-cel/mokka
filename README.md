@@ -1,4 +1,5 @@
-# Machine Learning and Optimization for Communications
+# Machine Learning and Optimization for Communications (MOKka) 
+(german: **M**aschinelles Lernen und **O**ptimierung für **K**ommuni**ka**tionssysteme)
 
 This Python package is intended to provide signal and information processing blocks in popular machine learning frameworks.
 Most of the functionality currently is provided for the PyTorch machine learning framework. Some parts are already implemented to interface with the Sionna Python package.
