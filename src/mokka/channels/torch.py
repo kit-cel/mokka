@@ -39,7 +39,7 @@ class ComplexAWGN(torch.nn.Module):
         n = torch.zeros_like(x, device=x.device).normal_()
         # If only one value is supplied for all given samples
         if n.size() != N_0.size():
-            N_0 = torch.full_like(n, N_0, dtype=torch.float32)
+            N_0 = torch.full_like(n, N_0.item(), dtype=torch.float32)
         n = torch.mul(n, torch.sqrt(N_0))
         return x + n
 
