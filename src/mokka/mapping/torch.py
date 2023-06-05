@@ -184,16 +184,22 @@ class SimpleConstellationMapper(torch.nn.Module):
 class ConstellationMapper(torch.nn.Module):
     """
     Mapper which maps from bits in float 0,1 representation to \
-    Symbols in the complex plane with average energy E_S = 1.
+    Symbols in the complex plane.
 
     :param m: bits per symbol
     :param mod_extra_params: index of extra parameters to feed the NN
     :param center_constellation: Apply operation at the end to center constellation
+    :param normalize: Apply normalization to unit energy
     :param qam_init: Initialize the weights to form a Gray mapped QAM constellation
     """
 
     def __init__(
-        self, m, mod_extra_params=None, center_constellation=False, qam_init=False
+        self,
+        m,
+        mod_extra_params=None,
+        center_constellation=False,
+        normalize=True,
+        qam_init=False,
     ):
         """Construct ConstellationMapper."""
         super(ConstellationMapper, self).__init__()
@@ -201,6 +207,7 @@ class ConstellationMapper(torch.nn.Module):
         self.register_buffer("m", torch.tensor(m))
         self.register_buffer("mod_extra_params", torch.tensor(mod_extra_params or []))
         self.register_buffer("center_constellation", torch.tensor(center_constellation))
+        self.register_buffer("normalize", torch.tensor(normalize))
         # Mapper
         self.map1 = torch.nn.Linear(max(len(mod_extra_params or []), 1), 2 ** (m + 1))
         self.map2 = torch.nn.Linear(2 ** (m + 1), 2 ** (m + 1))
@@ -265,7 +272,7 @@ class ConstellationMapper(torch.nn.Module):
         )
         if self.center_constellation.item():
             c = normalization.centered_energy(c, self.p_symbols)
-        else:
+        elif self.normalize:
             c = normalization.energy(c, self.p_symbols)
         logger.debug("c device: %s", c.device)
         logger.debug("c size after scaling: %s", c.size())
