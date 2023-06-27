@@ -232,3 +232,50 @@ class MidriseQuantizer(torch.nn.Module):
         )
         y_quant = y_quant + y - y.detach()  # Retain the gradients
         return y_quant
+
+
+class SoftMidriseQuantizer(torch.nn.Module):
+    """
+    Use tanh() with temperature to approximate Midrise quantization.
+
+    For temperature -> 0 the SoftMidriseQuantizer approximates the
+    MidriseQuantizer.
+    """
+
+    def __init__(self, bit, max_amplitude=1.0, temperature=0.01):
+        """Initialize SoftMidriseQuantizer."""
+        super(SoftMidriseQuantizer, self).__init__()
+
+        self.delta = max_amplitude / ((2 ** (bit - 1)))
+        self.levels = 2**bit
+        self.max_amplitude = max_amplitude
+        self.temperature = temperature
+
+        self.tanh = torch.nn.Tanh()
+
+    def forward(self, x):
+        """
+        Apply quantization to signal.
+
+        :param x: real signal to quantize.
+        """
+        y = torch.zeros_like(x, device=x.device)
+        y = torch.sum(
+            self.delta
+            / 2
+            * self.tanh(
+                (
+                    x[:, None]
+                    + self.delta
+                    * (
+                        (self.levels // 2 - 1)
+                        - torch.arange(self.levels - 1).view(
+                            *(1,) * len(x.size()) + (-1,)
+                        )
+                    )
+                )
+                / self.temperature
+            ),
+            dim=-1,
+        )
+        return y
