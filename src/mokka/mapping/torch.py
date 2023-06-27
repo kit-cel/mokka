@@ -230,7 +230,7 @@ class ConstellationMapper(torch.nn.Module):
             torch.nn.init.xavier_normal_(self.map1.weight)
             torch.nn.init.xavier_normal_(self.map2.weight)
 
-    def forward(self, b, *args):
+    def forward(self, b, *args, one_hot=False):
         """
         Perform mapping of bitstrings.
 
@@ -240,7 +240,10 @@ class ConstellationMapper(torch.nn.Module):
         # in vectors of length 2**m
         device = b.device
         logger.debug("b size: %s", b.size())
-        B_hot = bits_to_onehot(b)
+        if one_hot:
+            B_hot = b
+        else:
+            B_hot = bits_to_onehot(b)
         logger.debug("len args: %s", len(args))
         logger.debug("args: %s", args)
         if len(self.mod_extra_params):
