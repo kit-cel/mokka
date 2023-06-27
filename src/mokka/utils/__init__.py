@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 
 import logging
 
+from . import generators  # noqa
+
 
 # Plotting utilities
 
