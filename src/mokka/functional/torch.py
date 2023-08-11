@@ -33,6 +33,44 @@ def convolve(signal, kernel, mode="full"):
     )
 
 
+def convolve_overlap_save(signal, kernel, mode="full"):
+    """Calculate the 1-D convolution using FFT overlap-save method.
+
+    This is  only  efficient for very  long signals, where signal length >> 10*kernel length
+    """
+
+    original_signal_len = signal.shape[0]
+    conv_padding = 0
+    if mode == "full":
+        conv_padding = kernel.shape[0] - 1
+        output_len = original_signal_len + kernel.shape[0] - 1
+    elif mode == "valid":
+        conv_padding = 0
+        output_len = original_signal_len - kernel.shape[0] + 1
+    elif mode == "same":
+        conv_padding = int((kernel.shape[0]) // 2)
+        output_len = original_signal_len
+    else:
+        raise Exception(f"Convolution mode {mode} not supported!")
+    signal = torch.nn.functional.pad(signal, (conv_padding, conv_padding))
+    # Approximate  length of FFT:
+    fft_len = int(2 ** np.ceil(np.log2(kernel.shape[0] * 10)))
+    kernel_f = torch.fft.fft(kernel, fft_len, dim=0).unsqueeze(0)
+    # Generate overlapping view on signal
+    n_fft = np.ceil((signal.shape[0] - fft_len) / (fft_len - kernel.shape[0] + 1))
+    pad_signal_len = int((n_fft + 1) * fft_len + n_fft * (1 - kernel.shape[0]))
+    padding_value = pad_signal_len - signal.shape[0]
+    split_signal = torch.nn.functional.pad(signal, (0, padding_value)).unfold(
+        0, fft_len, fft_len - kernel.shape[0] + 1
+    )
+    signal_f = torch.fft.fft(split_signal, fft_len, dim=1)
+    filtered_signal = torch.fft.ifft(kernel_f * signal_f, fft_len, dim=1)
+    output_signal = filtered_signal[:, kernel.shape[0] - 1 : fft_len].reshape(-1)[
+        :output_len
+    ]
+    return output_signal
+
+
 def distribution_quantization(probs, n):
     """
     Compute a quantized distribution for given probabilities.

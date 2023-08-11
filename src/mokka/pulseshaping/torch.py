@@ -47,7 +47,9 @@ class PulseShaping(torch.nn.Module):
         """
         y_up = torch.zeros(y.shape[0] * n_up, dtype=torch.complex64, device=y.device)
         y_up[::n_up] = y
-        y_shaped = functional.torch.convolve(y_up, self.impulse_response)
+        y_shaped = functional.torch.convolve_overlap_save(
+            y_up, self.impulse_response, mode="full"
+        )
         return y_shaped
 
     def matched(self, r, n_down):
@@ -164,7 +166,7 @@ class PulseShaping(torch.nn.Module):
 
             # time indices and sampled time
             k_steps = torch.arange(
-                -T_ir / T_sample / 2, T_ir / T_sample / 2 + 1, dtype=int
+                -T_ir / T_sample / 2, T_ir / T_sample / 2 + 1, dtype=torch.int
             )
             t_steps = k_steps * T_sample
 
@@ -225,7 +227,8 @@ class MidriseQuantizer(torch.nn.Module):
             * self.delta
             * (
                 torch.floor(
-                    torch.clamp(torch.abs(y), 0, self.max_amplitude) / self.delta
+                    torch.clamp(torch.abs(y), 0, self.max_amplitude - self.delta / 2)
+                    / self.delta
                 )
                 + 0.5
             )
@@ -279,3 +282,108 @@ class SoftMidriseQuantizer(torch.nn.Module):
             dim=-1,
         )
         return y
+
+
+def cosine_sum_window(a_0, length=501):
+    """Get cosine sum window coefficients."""
+    w_n = a_0 - (1 - a_0) * torch.cos(
+        (2 * torch.pi * torch.arange(length, device=a_0.device)) / length
+    )
+    return w_n
+
+
+def hann_window(length=501):
+    """Get Hann window coefficients."""
+    return cosine_sum_window(torch.tensor(0.5), length)
+
+
+def hamming_window(length=501):
+    """Get Hamming window coefficients."""
+    return cosine_sum_window(torch.tensor(25 / 46), length)
+
+
+def blackman_harris_window(length=501):
+    """Get Blackman-harris window coefficients."""
+    a_0 = 0.35875
+    a_1 = 0.48829
+    a_2 = 0.14128
+    a_3 = 0.01168
+
+    n = torch.arange(length) / length
+    w_n = (
+        a_0
+        - a_1 * torch.cos(2 * torch.pi * n)
+        + a_2 * torch.cos(4 * torch.pi * n)
+        - a_3 * torch.cos(6 * torch.pi * n)
+    )
+    return w_n
+
+
+def brickwall_filter(
+    cutoff, filter_length, filter_gain, window="hann", dtype=torch.complex64
+):
+    """Approximate brickwall filter in fourier domain with configurable window."""
+    coeff = cutoff * torch.sinc(
+        cutoff
+        * torch.linspace(
+            -(filter_length - 1) / 2,
+            (filter_length - 1) / 2,
+            filter_length,
+            dtype=dtype,
+        )
+    )
+    coeff = filter_gain * coeff / torch.sum(coeff)
+    if window == "hann":
+        window = hann_window(coeff.shape[0])
+    elif window == "hamming":
+        window = hamming_window(coeff.shape[0])
+    elif window == "blackmann_harris":
+        window = blackman_harris_window(coeff.shape[0])
+    elif window == "rect":
+        window = 1
+    else:
+        raise Exception(f"Window function {window} unknown!")
+    coeff = coeff * window
+    return coeff
+
+
+def upsample(n_up, signal, filter_length=501, filter_gain=1):
+    """Perform upsampling on signal."""
+    signal = signal.unsqueeze(-1)
+    padding = torch.zeros(
+        (*signal.size()[:-1], n_up - 1),
+        dtype=signal.dtype,
+        layout=signal.layout,
+        device=signal.device,
+    )
+    signal = torch.concatenate((signal, padding), dim=-1).view(*signal.size()[:-2], -1)
+
+    # Fourierapprox of upsampling filter
+    cutoff = 1 / n_up
+    coeff = brickwall_filter(
+        cutoff,
+        filter_length,
+        filter_gain,
+        dtype=signal.dtype,
+        window="blackmann_harris",
+    )
+    signal_up = functional.torch.convolve_overlap_save(signal, coeff, "same")
+    return signal_up
+
+
+def downsample(n_down, signal, filter_length=501, filter_gain=1):
+    """Perform downsampling on signal."""
+    coeff = brickwall_filter(
+        1 / n_down,
+        filter_length,
+        filter_gain,
+        dtype=signal.dtype,
+        window="blackmann_harris",
+    )
+    signal = functional.torch.convolve_overlap_save(signal, coeff, "full")
+    signal = signal[
+        int(filter_length // 2) : -int(
+            torch.ceil(torch.tensor(filter_length) / 2).item()
+        )
+    ][::n_down]
+    return signal

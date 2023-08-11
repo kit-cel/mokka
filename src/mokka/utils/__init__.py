@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import logging
 
 from . import generators  # noqa
+from . import bitops  # noqa
 
 
 # Plotting utilities
