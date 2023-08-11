@@ -7,6 +7,8 @@ import numpy as np
 import attr
 import logging
 from .. import utils
+from .. import functional
+from ..pulseshaping.torch import upsample, downsample, brickwall_filter
 
 logger = logging.getLogger(__name__)
 
@@ -1058,3 +1060,159 @@ def symmetrical_SSPROPV_step(u1, u2, h11, h12, h21, h22, NOP):
 def SSFM_halfstep_end(signal, linear_op):
     """Calculate the final halfstep of the single polarization SSFM."""
     return torch.fft.ifft(torch.fft.fft(signal) * linear_op)
+
+
+class WDMMux(torch.nn.Module):
+    """Perform configurable muxing of baseband channels to simulate WDM."""
+
+    def __init__(self, n_channels, spacing, samp_rate, sim_rate):
+        """Initialize WDMMux."""
+        super(WDMMux, self).__init__()
+
+        self.n_up = int(sim_rate // samp_rate)
+        if abs(samp_rate * self.n_up - sim_rate) > 0.1:
+            raise ValueError(
+                "Currently sim_rate must be an integer multiple of samp_rate"
+            )
+
+        self.freq_coeff = 2 * torch.pi * spacing / sim_rate
+        self.n_channels = n_channels
+
+    def forward(self, signals):
+        """Modulate the signals on WDM channels in the digital baseband."""
+        upsampled_signals = torch.zeros(
+            (signals.shape[0], signals.shape[1] * self.n_up),
+            device=signals.device,
+            dtype=torch.complex64,
+        )
+        for idx, signal in enumerate(signals):
+            upsampled_signals[idx] = upsample(
+                self.n_up, signal, filter_length=10001, filter_gain=np.sqrt(self.n_up)
+            )
+            channel_idx = -(self.n_channels // 2) + idx
+            upsampled_signals[idx] = upsampled_signals[idx] * torch.exp(
+                1j
+                * self.freq_coeff
+                * channel_idx
+                * torch.arange(upsampled_signals[idx].shape[0])
+            )
+        return torch.sum(upsampled_signals, dim=0)
+
+
+class PolyPhaseChannelizer(torch.nn.Module):
+    """Perform poly-phase channelization with variable filter coefficients."""
+
+    def __init__(self, coeff, n_down):
+        """Init PolyPhaseChannelizer."""
+        super(PolyPhaseChannelizer, self).__init__()
+
+        self.permutation_matrix = (
+            torch.eye(n_down, dtype=coeff.dtype, device=coeff.device).flip(1).roll(1, 1)
+        )
+        self.kernels = torch.transpose(coeff.reshape(-1, n_down), -1, -2)
+        self.n_down = n_down
+
+    def forward(self, signal):
+        """Apply poly-phase channelization on a wideband signal."""
+        # Bring signal into correct shape for polyphase filtering
+        num_periods = int(np.ceil(signal.shape[0] / self.n_down).item())
+        target_len = num_periods * self.n_down
+        pad_len = target_len - signal.shape[0]
+        signal_cut = torch.nn.functional.pad(signal, (0, pad_len))
+        signal_polyphase = torch.transpose(signal_cut.reshape(-1, self.n_down), -1, -2)
+
+        # One additional signal point is added after convolution to guarantee
+        # correct overlap of coefficients
+        filtered_signals = torch.zeros(
+            (self.n_down, num_periods + self.kernels.shape[1]),
+            dtype=signal_cut.dtype,
+            device=signal.device,
+        )
+
+        signal_rotated = self.permutation_matrix.mm(signal_polyphase)
+
+        for idx in range(self.n_down):
+            sig = signal_rotated[idx]
+            kernel = self.kernels[idx]
+            filt_sig = functional.torch.convolve_overlap_save(sig, kernel, "full")
+            if idx == 0:
+                filtered_signals[idx] = torch.nn.functional.pad(filt_sig, (0, 1))
+            else:
+                filtered_signals[idx] = torch.nn.functional.pad(filt_sig, (1, 0))
+        # This corresponds to filter operation with mode "valid" -
+        # remove last sample since it's value is invalid
+        return (
+            self.n_down
+            * torch.fft.ifft(filtered_signals, dim=0).resolve_conj()[
+                :,
+                int(self.kernels.shape[1] // 2) : -int(self.kernels.shape[1] // 2) - 1,
+            ]
+        )
+
+
+class WDMDemux(torch.nn.Module):
+    """WDM Demuxing for a configurable number of channels and system parameters."""
+
+    def __init__(
+        self, n_channels, spacing, sym_rate, sim_rate, used_channels, method="classical"
+    ):
+        """Initialize WDMDemux."""
+        super(WDMDemux, self).__init__()
+
+        self.n_down = n_channels  # Use the Polyphase Filterbank approach
+        self.n_channels = n_channels
+        self.wdm_channels = used_channels
+        self.sym_rate = sym_rate
+        self.sim_rate = sim_rate
+        self.spacing = spacing
+
+        self.method = method
+
+        if self.method == "polyphase":
+            phase_filter_len = 1024
+            cutoff = 1 / self.n_channels
+            downsampling_prototype_filter = brickwall_filter(
+                cutoff,
+                filter_length=phase_filter_len * self.n_down,
+                filter_gain=np.sqrt(self.n_channels),
+                window="blackmann_harris",
+            )
+
+            self.channelizer = PolyPhaseChannelizer(
+                downsampling_prototype_filter, n_channels
+            )
+
+    def forward(self, signal):
+        """WDM Demux the wide-band signal."""
+        if self.method == "classical":
+            return self.classical_demux(signal)[self.wdm_channels]
+        elif self.method == "polyphase":
+            return self.polyphase_demux(signal)[self.wdm_channels]
+        else:
+            raise Exception(f"Demux method {self.method} unknown!")
+
+    def polyphase_demux(self, signal):
+        """Peform WDM Demuxing with the Polyphase Channelizer method."""
+        return self.channelizer(signal)
+
+    def classical_demux(self, signal):
+        """Perform WDM Demuxing for each channel individually."""
+        filter_len = 10001
+
+        results = []
+        for n in torch.arange(self.n_channels):
+            signal_shifted = signal * torch.exp(
+                -1j
+                * 2
+                * torch.pi
+                * n
+                * self.spacing
+                / self.sim_rate
+                * torch.arange(signal.shape[0])
+            )
+            signal_down = downsample(
+                self.n_down, signal_shifted, filter_len, filter_gain=self.n_down
+            ).unsqueeze(0)
+            results.append(signal_down)
+        results = torch.cat(results, dim=0)
+        return results
