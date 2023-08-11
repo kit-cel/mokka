@@ -19,7 +19,7 @@ class CD_compensation(torch.nn.Module):
         self.beta2 = beta2  # ps**2/km
         self.channel_length = channel_length
 
-    def forward(self, y):
+    def forward(self, y, center_freq=0):
         """
         Peform chromatic dispersion compensation in the frequency domain.
 
@@ -27,7 +27,9 @@ class CD_compensation(torch.nn.Module):
         :returns: equalized signal
         """
         nt = y.size()[0]
-        dw = (2 * np.pi * torch.fft.fftfreq(nt, self.dt * 1e12)).to(y.device)  # *(1/4)
+        dw = (2 * np.pi * (torch.fft.fftfreq(nt, self.dt * 1e12)) + center_freq).to(
+            y.device
+        )  # *(1/4)
 
         linear_operator = torch.exp(
             -1j * self.beta2 / 2 * dw**2 * self.channel_length
