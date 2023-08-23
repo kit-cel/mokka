@@ -22,7 +22,7 @@ def bits_to_onehot(bits):
     :returns: Vectors of one-hot vectors
     """
     B = bits2idx(bits)
-    idx = torch.meshgrid(list(torch.arange(s) for s in B.size()))
+    idx = torch.meshgrid(list(torch.arange(s) for s in B.size()), indexing="ij")
     B_hot = torch.zeros(
         (*B.size(), 2 ** bits.shape[-1]), dtype=torch.float32, device=bits.device
     )
