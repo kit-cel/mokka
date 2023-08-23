@@ -2,7 +2,7 @@
 
 import torch
 import numpy as np
-from ....functional.torch import unwrap_torch
+from ....functional.torch import unwrap
 
 
 class BPS(torch.nn.Module):
@@ -202,7 +202,7 @@ class BPS(torch.nn.Module):
                     smvg = softmin(mvg / self.temperature_per_epoch)
                     sangles = 4 * torch.squeeze(angles)
                     ph = (
-                        unwrap_torch(
+                        unwrap(
                             torch.angle(
                                 smvg @ torch.cos(sangles)
                                 + 1j * (smvg @ torch.sin(sangles))
@@ -216,7 +216,7 @@ class BPS(torch.nn.Module):
                 else:
                     smvg = softmin(mvg / self.temperature_per_epoch)
                     sangles = torch.squeeze(angles)
-                    ph = unwrap_torch(
+                    ph = unwrap(
                         torch.angle(
                             smvg @ torch.cos(sangles) + 1j * (smvg @ torch.sin(sangles))
                         ),
@@ -232,9 +232,9 @@ class BPS(torch.nn.Module):
                 ph[i] = self.select_angles_torch(angles.clone(), idx.int())
 
             if self.no_sectors == 4:
-                ph[0, :] = unwrap_torch(4 * ph[0, :], np.pi, -1, 2 * np.pi) / 4
+                ph[0, :] = unwrap(4 * ph[0, :], np.pi, -1, 2 * np.pi) / 4
             else:
-                ph[0, :] = unwrap_torch(ph[0, :], np.pi, -1, 2 * np.pi)
+                ph[0, :] = unwrap(ph[0, :], np.pi, -1, 2 * np.pi)
             return Ew * torch.exp(1j * ph), ph
 
     def _bps_idx_torch(self, x, angles):
