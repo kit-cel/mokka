@@ -2,6 +2,7 @@
 
 import torch
 import numpy as np
+from .. import utils
 
 
 def convolve(signal, kernel, mode="full"):
@@ -38,7 +39,6 @@ def convolve_overlap_save(signal, kernel, mode="full"):
 
     This is  only  efficient for very  long signals, where signal length >> 10*kernel length
     """
-
     original_signal_len = signal.shape[0]
     conv_padding = 0
     if mode == "full":
@@ -130,7 +130,7 @@ def distribution_quant_gumbel_softmax(probs, n, temp=0.1):
     return idx
 
 
-def unwrap_torch(p, discont=np.pi, dim=-1, period=2 * np.pi):
+def unwrap(p, discont=np.pi, dim=-1, period=2 * np.pi):
     """
     Perform phase unwrapping in PyTorch.
 
@@ -152,3 +152,18 @@ def unwrap_torch(p, discont=np.pi, dim=-1, period=2 * np.pi):
     up = p.clone()
     up[slice1] = p[slice1] + torch.cumsum(ph_correct, dim=dim)
     return up
+
+
+@utils.decorators.deprecated("Use unwrap() instead")
+def unwrap_torch(*args):
+    """
+    Perform phase unwrapping in PyTorch.
+
+    This implementation follows the NumPy implementation closely.
+
+    :param p: tensor with angle values
+    :param discont: discontinuity to unwrap
+    :param dim: dimension to unwrap
+    :param period: which periodicity the signal has
+    """
+    return unwrap(*args)
