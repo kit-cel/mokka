@@ -580,10 +580,10 @@ class ClassicalDemapper(torch.nn.Module):
         m = int(math.log2(M))
         self.register_buffer("m", torch.tensor(m))
 
-        all_bits = np.arange(2**m, dtype=np.uint8)
-        all_bits = np.expand_dims(all_bits, 1)
-        B = np.unpackbits(all_bits, axis=1, count=m, bitorder="little")
-        self.bits = torch.from_numpy(B).to(constellation.device)
+        self.bits = torch.tensor(generate_all_bits(self.m.item()).copy()).to(
+            constellation.device
+        )
+
         with torch.no_grad():
             self.one_idx = torch.nonzero(self.bits)
             self.m_one_idx = [
