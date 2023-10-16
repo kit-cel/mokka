@@ -22,9 +22,7 @@ class QAMConstellationMapper(torch.nn.Module):
         self.register_buffer("m", torch.tensor(m))
         qam = QAM(m)
         constellation_symbols = qam.get_constellation().flatten()
-        self.register_buffer(
-            "symbols", torch.tensor(constellation_symbols, dtype=torch.complex64)
-        )
+        self.register_buffer("symbols", constellation_symbols)
         self.register_buffer("p_symbols", torch.full((2**m,), 1.0 / (2**m)))
 
     def get_constellation(self, *args):
@@ -86,10 +84,18 @@ class CustomConstellationMapper(torch.nn.Module):
         device = b.device
         logger.debug("b size: %s", b.size())
 
-        B_hot = bits_to_onehot(b)
+        B_hot = torch.unsqueeze(bits_to_onehot(b), -1).expand(
+            -1, -1, self.symbols.size()[-1]
+        )
 
-        c = torch.unsqueeze(self.symbols, 0).expand(*b.size()[:-1], -1).to(device)
-        x = torch.sum(B_hot * c, -1)
+        c = (
+            torch.unsqueeze(self.symbols, 0)
+            .expand(*b.size()[:-1], *((-1,) * (self.symbols.dim())))
+            .to(device)
+        )
+        print(B_hot.size())
+        print(c.size())
+        x = torch.sum(B_hot * c, 1)
         x = torch.unsqueeze(x, 1)
         return x  # , idx[1]
 
