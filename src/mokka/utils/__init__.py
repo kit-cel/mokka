@@ -88,18 +88,11 @@ def plot_constellation(
     """
     const_cpu = constellation.detach().cpu().numpy()
 
+    bitlabels = ints2bits(np.arange(len(const_cpu)), int(np.log2(len(const_cpu))))
     if label_type == "hex":
-        vhex = np.vectorize(hex)
-        labels = list(str(v)[2:].upper() for v in vhex(np.arange(len(const_cpu))))
+        labels = bits2hex(bitlabels)
     else:
-        labels = list(
-            [
-                str(row)
-                for row in generators.numpy.generate_all_bits(
-                    int(np.log2(len(constellation)))
-                )
-            ]
-        )
+        labels = bitlabels
     if not keep:
         ax.clear()
     ax.set_facecolor("white")
@@ -249,8 +242,9 @@ def export_constellation(output_file, constellation):
     :returns:
 
     """
-    vhex = np.vectorize(hex)
-    labels = list(str(v)[2:].upper() for v in vhex(np.arange(len(constellation))))
+    labels = bits2hex(
+        ints2bits(np.arange(len(constellation)), int(np.log2(len(constellation))))
+    )
     result = ["real\timag\tlabel\n"]
     for point, label in zip(constellation, labels):
         result.append(f"{point.real}\t{point.imag}\t{label}\n")
