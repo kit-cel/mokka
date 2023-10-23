@@ -27,7 +27,7 @@ class CD_compensation(torch.nn.Module):
         :returns: equalized signal
         """
         nt = y.size()[0]
-        dw = (2 * np.pi * (torch.fft.fftfreq(nt, self.dt * 1e12)) + center_freq).to(
+        dw = (2 * np.pi * ((torch.fft.fftfreq(nt, self.dt * 1e12)) + center_freq)).to(
             y.device
         )  # *(1/4)
 
