@@ -30,6 +30,6 @@ def test_convolve_pytorch_complex():
 def test_unwrap():
     angle_diff = np.random.random(10000) * 2 * np.pi
     angles = np.cumsum(angle_diff)
-    result = mokka.functional.torch.unwrap_torch(torch.tensor(angles))
+    result = mokka.functional.torch.unwrap(torch.tensor(angles))
     expected_result = np.unwrap(angles)
     assert np.allclose(result, expected_result)
