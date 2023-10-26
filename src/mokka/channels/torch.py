@@ -219,6 +219,8 @@ class EDFAAmpSinglePol(torch.nn.Module):
     Gaussian noise model of an EDFA for single polarization fiberoptics.
 
     :param span_length: span_length [km]
+    :param amp_gain: Either 'alpha_equalization' or 'equal_power'
+    :param alpha_db: Attenuation of the fiber [dB/km]
     :param amp_noise: Consider amplification noise [bool]
     :param amp_gain: Which amplification gain model to use either 'alpha_equalization',
                      'equal_power'
