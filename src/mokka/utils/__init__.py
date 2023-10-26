@@ -95,11 +95,8 @@ def plot_constellation(
         labels = list(
             [
                 str(row)
-                for row in np.unpackbits(
-                    np.expand_dims(np.arange(len(const_cpu), dtype=np.uint8), 1),
-                    axis=1,
-                    count=int(np.log2(len(const_cpu))),
-                    bitorder="little",
+                for row in generators.numpy.generate_all_bits(
+                    int(np.log2(len(constellation)))
                 )
             ]
         )

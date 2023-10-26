@@ -407,10 +407,9 @@ class SeparatedConstellationMapper(torch.nn.Module):
         :returns: tensor of constellation points
         """
         # Test bits
-        all_bits = np.arange(2 ** self.m.item(), dtype=np.uint8)
-        all_bits = np.expand_dims(all_bits, 1)
-        B = np.unpackbits(all_bits, axis=1, count=self.m.item(), bitorder="little")
-        bits = torch.from_numpy(B).to(self.real_weights.device)
+        bits = torch.from_numpy(generate_all_bits(self.m.item())).to(
+            self.real_weights.device
+        )
         logger.debug("bits device: %s", bits.device)
         out = self.forward(bits, *args)
         return out
@@ -689,10 +688,7 @@ class GaussianDemapper(torch.nn.Module):
             torch.nn.Parameter(noise_mean),
         )
 
-        all_bits = np.arange(2**m, dtype=np.uint8)
-        all_bits = np.expand_dims(all_bits, 1)
-        B = np.unpackbits(all_bits, axis=1, count=m, bitorder="little")
-        self.bits = torch.from_numpy(B).to(constellation.device)
+        self.bits = torch.tensor(generate_all_bits(m).copy()).to(constellation.device)
         with torch.no_grad():
             self.one_idx = torch.nonzero(self.bits)
             self.m_one_idx = [
