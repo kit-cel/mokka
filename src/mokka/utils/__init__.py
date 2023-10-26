@@ -329,3 +329,50 @@ def dbm2pow(ydbm):
     :returns: power in linear units [W]
     """
     return 10 ** ((ydbm - 30) / 10)
+
+
+def bits2int(bits):
+    """Convert bit array to their integer representation MSB first.
+
+    :param bits: array of bit arrays
+    :returns: array of ints
+    """
+    return bits.dot(1 << np.arange(bits.shape[1])[::-1])
+
+
+def ints2bits(ints, m):
+    """Convert integers to their bit representations MSB first.
+
+    :param ints: array of ints
+    :param m: bit-width per int
+    :returns: array of bit arrays
+    """
+    b = np.expand_dims(ints, 1)
+    B = np.flip(
+        np.unpackbits(b.view(np.uint8), axis=1, count=m, bitorder="little"), axis=1
+    )[:, :m]
+    return B
+
+
+def bits2hex(bits):
+    """Convert bit array to their hex representation MSB first.
+
+    :param bits: array of bit arrays
+    :returns: list of hex strings
+    """
+    vhex = np.vectorize(hex)
+    ints = bits2int(bits)
+    hexs = list(str(v)[2:].upper() for v in vhex(ints))
+    return hexs
+
+
+def hex2bits(hexs, m):
+    """Convert list of hex strings to their bit representation MSB first.
+
+    :param hexs: list of hex strings
+    :param m: bit-width per hex
+    :returns: array of bit arrays
+    """
+    ints = np.array([int("0x" + h, 0) for h in hexs])
+    bits = ints2bits(ints, m)
+    return bits
