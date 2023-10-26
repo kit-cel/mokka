@@ -1,0 +1,35 @@
+name: Coverage
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  coverage:
+    name: Coverage for ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: ["ubuntu"]
+    runs-on: ${{ matrix.os }}-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@main
+        with:
+          python-version: "3.10"
+          cache: "pip"
+      - name: Setup virtual environment
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install pytest pytest-cov
+      - name: Run coverage for mokka
+        run: |
+          source venv/bin/activate
+          pip install '.[torch,tf,dev]'
+          pytest tests --cov=mokka --cov-report xml
+      - uses: codecov/codecov-action@v3
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        with:
+          files: coverage.lcov,coverage.xml
+          name: ${{ matrix.os }}
