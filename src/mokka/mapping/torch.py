@@ -677,7 +677,8 @@ class GaussianDemapper(torch.nn.Module):
         self.register_parameter(
             "cov_gen_mat",
             torch.nn.Parameter(
-                torch.eye(dim, dtype=torch.float32, device=constellation.device)
+                0.01
+                * torch.eye(dim, dtype=torch.float32, device=constellation.device)
                 .unsqueeze(0)
                 .repeat(M, 1, 1)
             ),
