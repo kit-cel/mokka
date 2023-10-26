@@ -37,7 +37,8 @@ def convolve(signal, kernel, mode="full"):
 def convolve_overlap_save(signal, kernel, mode="full"):
     """Calculate the 1-D convolution using FFT overlap-save method.
 
-    This is  only  efficient for very  long signals, where signal length >> 10*kernel length
+    This is  only  efficient for very  long signals,
+    where signal length >> 10*kernel length
     """
     original_signal_len = signal.shape[0]
     conv_padding = 0
