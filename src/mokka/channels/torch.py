@@ -87,6 +87,8 @@ class PhasenoiseWiener(torch.nn.Module):
         ----------
         x: array_like
            Input data
+        sigma_phi: float
+           phase noise variance
         """
         x = torch.squeeze(x)
         logger.debug("sigma_phi: %s", sigma_phi.item())
@@ -113,6 +115,8 @@ class PhasenoiseWiener(torch.nn.Module):
         ----------
         x: array_like
            Input data
+        sigma_phi: float
+           phase noise variance
         """
         x = torch.squeeze(x)
         logger.debug("sigma_phi: %s", sigma_phi.item())
@@ -260,8 +264,11 @@ class EDFAAmpSinglePol(torch.nn.Module):
 
         Parameters
         ----------
-        signal : singal before the amplifier
-        segment: segment number
+        signal : array_like
+           signal before the amplifier
+        segment: array_like
+           segment number
+
         Returns
         -------
         signal : signal after the amplifier
@@ -359,8 +366,12 @@ class EDFAAmpDualPol(torch.nn.Module):
 
         Parameters
         ----------
-        signal : singal before the amplifier
-        segment: segment number
+        u1 : array_like
+           co-polarized signal before the amplifier
+        u2 : array_like
+           cross-polarized signal before the amplifier
+        segment: array_like
+           segment number
         Returns
         -------
         signal : signal after the amplifier

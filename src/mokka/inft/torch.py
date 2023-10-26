@@ -23,6 +23,9 @@ def BMI(m, N, b_ij, L_ij, p=None):
         at the j-th position in the bit-string
     L_ij        : 2D-matrix_like
         LLRs
+    p           : 1D-matrix_like
+        probability of occurence of the sent symbols
+        to adjust source entropy.
 
     Returns
     -------
@@ -63,6 +66,8 @@ def MI(M, PX, N, symbol_idx, Q_YX):
         N x M conditonal probabilities
     PX        : 2D-matrix_like
         1 x M
+    symbol_idx  : 1D-matrix_like
+        sent symbol indices
 
     Returns
     -------
@@ -93,11 +98,10 @@ def hMI(m, N, symbol_idx, demapped_symbol_idx):
         number of bits per symbol
     N           : int
         number of sent/received symbols
-    b_ij        : 2D-matrix_like
-        value of the i-th (Sent) modulation symbol
-        at the j-th position in the bit-string
-    rb_ij        : 2D-matrix_like
-        received bits
+    symbol_idx  : 1D-matrix_like
+        sent symbol indices
+    demapped_symbol_idx : 1D-matrix_like
+        demapped symbol indices
 
     Returns
     -------

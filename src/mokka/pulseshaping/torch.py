@@ -211,17 +211,30 @@ class PulseShaping(torch.nn.Module):
 
 
 class MidriseQuantizer(torch.nn.Module):
-    """Implement a Quantizer which translates a continuos signal into 2**m levels."""
+    """
+    A Quantizer which translates a continuos signal into 2**m levels.
+
+    This quantizer operates on a real-valued signal and quantizes between
+    [-max_amplitude,max_amplitude].
+    """
 
     def __init__(self, bit, max_amplitude=1.0):
-        """Construct `MidriseQuuantizer`."""
+        """
+        Construct `MidriseQuuantizer`.
+
+        :param bit: number of input bits, this will give 2**bit quantization levels
+        :param max_amplitude: Maximum amplitude before saturation.
+        """
         super(MidriseQuantizer, self).__init__()
 
         self.delta = max_amplitude / (2 ** (bit - 1))
         self.max_amplitude = max_amplitude
 
     def forward(self, y):
-        """Perform quantization."""
+        """Perform quantization.
+
+        :param y: real-valued signal to quantize
+        """
         y_quant = (
             torch.sign(y)
             * self.delta
@@ -246,7 +259,14 @@ class SoftMidriseQuantizer(torch.nn.Module):
     """
 
     def __init__(self, bit, max_amplitude=1.0, temperature=0.01):
-        """Initialize SoftMidriseQuantizer."""
+        """Initialize SoftMidriseQuantizer.
+
+        :param bit: number of bits to quantize.
+                    This will give 2**bit quantization levels.
+        :param max_amplitude: Maximum amplitude before saturation.
+        :param temperature: scale input to tanh to achieve
+                            a steeper quantization.
+        """
         super(SoftMidriseQuantizer, self).__init__()
 
         self.delta = max_amplitude / ((2 ** (bit - 1)))
@@ -261,6 +281,7 @@ class SoftMidriseQuantizer(torch.nn.Module):
         Apply quantization to signal.
 
         :param x: real signal to quantize.
+        :returns: Soft quantized signal.
         """
         y = torch.zeros_like(x, device=x.device)
         y = torch.sum(
@@ -284,38 +305,57 @@ class SoftMidriseQuantizer(torch.nn.Module):
         return y
 
 
-def cosine_sum_window(a_0, length=501):
-    """Get cosine sum window coefficients."""
-    w_n = a_0 - (1 - a_0) * torch.cos(
-        (2 * torch.pi * torch.arange(length, device=a_0.device)) / length
+def cosine_sum_window(coeffs, length=501):
+    """Get cosine sum window coefficients.
+
+    :param coeffs: :math:`a_k` coefficients to calculate cosine sum window
+    """
+    assert coeffs.dim() <= 1
+    n_coeffs = 1 if coeffs.dim() == 0 else coeffs.size()[0]
+    k = torch.unsqueeze(torch.arange(n_coeffs, device=coeffs.device), 0)
+
+    w_n_k = (
+        (-1) ** k
+        * torch.unsqueeze(coeffs, 0)
+        * torch.cos(
+            torch.unsqueeze(
+                (2 * torch.pi * torch.arange(length, device=coeffs.device)), 1
+            )
+            * k
+            / length
+        )
     )
-    return w_n
+    return torch.sum(w_n_k, axis=1)
 
 
 def hann_window(length=501):
-    """Get Hann window coefficients."""
-    return cosine_sum_window(torch.tensor(0.5), length)
+    """Get Hann window coefficients.
+
+    :param length: number of window taps
+    """
+    return cosine_sum_window(torch.tensor([0.5, 0.5]), length)
 
 
 def hamming_window(length=501):
-    """Get Hamming window coefficients."""
-    return cosine_sum_window(torch.tensor(25 / 46), length)
+    """Get Hamming window coefficients.
+
+    :param length: number of window taps
+    """
+    return cosine_sum_window(torch.tensor([25 / 46, 21 / 46]), length)
 
 
 def blackman_harris_window(length=501):
-    """Get Blackman-harris window coefficients."""
+    """Get Blackman-harris window coefficients.
+
+    :param length: number of window taps
+    """
     a_0 = 0.35875
     a_1 = 0.48829
     a_2 = 0.14128
     a_3 = 0.01168
+    a_k = torch.tensor(a_0, a_1, a_2, a_3)
 
-    n = torch.arange(length) / length
-    w_n = (
-        a_0
-        - a_1 * torch.cos(2 * torch.pi * n)
-        + a_2 * torch.cos(4 * torch.pi * n)
-        - a_3 * torch.cos(6 * torch.pi * n)
-    )
+    w_n = cosine_sum_window(a_k, length=length)
     return w_n
 
 
@@ -348,7 +388,14 @@ def brickwall_filter(
 
 
 def upsample(n_up, signal, filter_length=501, filter_gain=1):
-    """Perform upsampling on signal."""
+    """Perform upsampling on signal.
+
+    :param n_up: upsampling factor
+    :param signal: signal to upsample
+    :filter_length: number of filter taps of the brickwall interpolation filter
+    :filter_gain: gain to apply to brickwall filter
+
+    """
     signal = signal.unsqueeze(-1)
     padding = torch.zeros(
         (*signal.size()[:-1], n_up - 1),
@@ -372,7 +419,14 @@ def upsample(n_up, signal, filter_length=501, filter_gain=1):
 
 
 def downsample(n_down, signal, filter_length=501, filter_gain=1):
-    """Perform downsampling on signal."""
+    """Perform downsampling on signal.
+
+    :param n_down: downsampling factor
+    :param signal: signal to downsample
+    :param filter_length: number of filter taps to use
+                          for the brickwall filter
+    :param filter_gain: gain to apply to brickwall filter
+    """
     coeff = brickwall_filter(
         1 / n_down,
         filter_length,
