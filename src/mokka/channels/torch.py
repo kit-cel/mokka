@@ -1172,7 +1172,7 @@ class WDMDemux(torch.nn.Module):
 
         if self.method == "polyphase":
             phase_filter_len = 1024
-            cutoff = 1 / self.n_channels
+            cutoff = 1.0 / self.n_channels
             downsampling_prototype_filter = brickwall_filter(
                 cutoff,
                 filter_length=phase_filter_len * self.n_down,
