@@ -22,7 +22,9 @@ class QAMConstellationMapper(torch.nn.Module):
         self.register_buffer("m", torch.tensor(m))
         qam = QAM(m)
         constellation_symbols = qam.get_constellation().flatten()
-        self.register_buffer("symbols", constellation_symbols)
+        self.register_buffer(
+            "symbols", torch.tensor(constellation_symbols, dtype=torch.complex64)
+        )
         self.register_buffer("p_symbols", torch.full((2**m,), 1.0 / (2**m)))
 
     def get_constellation(self, *args):
