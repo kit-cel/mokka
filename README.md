@@ -1,3 +1,5 @@
+![tests](https://github.com/kit-cel/mokka/actions/workflows/python-package.yml/badge.svg) [![codecov](https://codecov.io/gh/kit-cel/mokka/graph/badge.svg?token=GXXZDNJ9W8)](https://codecov.io/gh/kit-cel/mokka) ![PyPI - Version](https://img.shields.io/pypi/v/mokka?link=https%3A%2F%2Fpypi.org%2Fproject%2Fmokka%2F) ![docs](https://img.shields.io/badge/docs-available-green?link=https%3A%2F%2Fkit-cel.github.io%2Fmokka%2F%23)
+
 # Machine Learning and Optimization for Communications (MOKka) 
 (german: **M**aschinelles Lernen und **O**ptimierung für **K**ommuni**ka**tionssysteme)
 
