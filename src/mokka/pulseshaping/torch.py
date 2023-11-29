@@ -353,7 +353,7 @@ def blackman_harris_window(length=501):
     a_1 = 0.48829
     a_2 = 0.14128
     a_3 = 0.01168
-    a_k = torch.tensor(a_0, a_1, a_2, a_3)
+    a_k = torch.tensor([a_0, a_1, a_2, a_3])
 
     w_n = cosine_sum_window(a_k, length=length)
     return w_n
