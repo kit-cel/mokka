@@ -58,6 +58,7 @@ class Butterfly2x2(torch.nn.Module):
         :param trainable: if the taps should be included in the parameters() attribute
                           to be trainable with automatic differentiation.
         """
+        super(Butterfly2x2, self).__init__()
         if taps is None:
             if num_taps is None:
                 raise ValueError("Either taps or num_taps must be set")
@@ -73,19 +74,26 @@ class Butterfly2x2(torch.nn.Module):
         # We store h_xx, h_xy, h_yy, h_yx
         self.taps = filter_taps
 
-        def forward(self, y, mode="valid"):
-            assert y.dim() == 2
-            assert y.size()[1] == 2
-            assert y.dtype == torch.complex64
+    def forward(self, y, mode="valid"):
+        """
+        Perform 2x2 convolution with taps in self.taps.
 
-            result_x = convolve_overlap_save(
-                y[:, 0], self.filter_taps[0, :], mode=mode
-            ) + convolve_overlap_save(y[:, 1], self.filter_taps[1, :], mode=mode)
-            result_y = convolve_overlap_save(
-                y[:, 1], self.filter_taps[2, :], mode=mode
-            ) + convolve_overlap_save(y[:, 0], self.filter_taps[3, :], mode=mode)
+        :params y: Signal to convolve
+        :params mode: convolution mode (either valid, same, or full)
+        :returns: convolved signal
+        """
+        assert y.dim() == 2
+        assert y.size()[0] == 2
+        assert y.dtype == torch.complex64
 
-            return torch.cat((result_x, result_y), dim=1)
+        result_x = convolve_overlap_save(
+            y[0, :], self.taps[0, :], mode=mode
+        ) + convolve_overlap_save(y[1, :], self.taps[1, :], mode=mode)
+        result_y = convolve_overlap_save(
+            y[1, :], self.taps[2, :], mode=mode
+        ) + convolve_overlap_save(y[0, :], self.taps[3, :], mode=mode)
+
+        return torch.cat((result_x.unsqueeze(0), result_y.unsqueeze(0)), dim=0)
 
 
 class Butterfly4x4(torch.nn.Module):
