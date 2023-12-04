@@ -34,11 +34,9 @@ class CD_compensation(torch.nn.Module):
             y.device
         )  # *(1/4)
 
-        linear_operator = torch.exp(
-            -1j * self.beta2 / 2 * dw**2 * self.channel_length
-        )
+        linear_operator = torch.exp(1j * self.beta2 / 2 * dw**2 * self.channel_length)
         Y = torch.fft.fft(y)
-        Y = Y / linear_operator
+        Y = Y * linear_operator
         return torch.fft.ifft(Y)
 
 
