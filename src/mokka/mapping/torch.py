@@ -571,7 +571,7 @@ class ClassicalDemapper(torch.nn.Module):
     :param optimize: Use $\\sigma$ as trainable paramater
     """
 
-    def __init__(self, noise_sigma, constellation, optimize=False):
+    def __init__(self, noise_sigma, constellation, optimize=False, bitwise=True):
         """Construct ClassicalDemapper."""
         super(ClassicalDemapper, self).__init__()
         if optimize:
@@ -582,10 +582,12 @@ class ClassicalDemapper(torch.nn.Module):
         else:
             self.noise_sigma = noise_sigma
         self.constellation = constellation
+        self.softmax = torch.nn.Softmax()
 
         M = torch.numel(self.constellation)
         m = int(math.log2(M))
-        self.register_buffer("m", torch.tensor(m))
+        self.register_buffer("m", torch.as_tensor(m))
+        self.register_buffer("bitwise", torch.as_tensor(bitwise))
 
         self.bits = torch.tensor(generate_all_bits(self.m.item()).copy()).to(
             constellation.device
@@ -620,8 +622,21 @@ class ClassicalDemapper(torch.nn.Module):
             (-1 * torch.abs(y - self.constellation) ** 2)
             / (2 * torch.clip(self.noise_sigma, 0.001) ** 2)
         )  # batch_size x 2**m x 1
-        llrs = torch.zeros((y.size()[0], self.m.item())).to(dist.device)
-        bias = 1e-8  # required to stop sum inside log2 from becoming zero
+
+        if self.bitwise:
+            return self.forward_bitwise(dist)
+        else:
+            return self.forward_symbolwise(dist)
+
+    def forward_bitwise(self, dist):
+        """
+        Perform bitwise demapping of complex symbols.
+
+        :params y: Received complex symbols of dimension batch_size x 1
+        :returns: log likelihood ratios
+        """
+        llrs = torch.zeros((dist.size()[0], self.m.item())).to(dist.device)
+        bias = 1e-8  # required to stop sum inside log from becoming zero
         for bit in np.arange(self.m.item()):
             one_llr = torch.log(
                 torch.sum(dist[:, self.m_one_idx[bit]] + bias, axis=1)
@@ -634,18 +649,15 @@ class ClassicalDemapper(torch.nn.Module):
             raise ValueError("LLRs all became zero, convergence problem")
         return llrs
 
-    def symbolwise(self, y, *args):
+    def forward_symbolwise(self, dist, *args):
         """
-        Perform symbolwise hard demapping of complex symbols.
+        Perform symbolwise soft demapping of complex symbols.
 
         :params y: Received complex symbols
         :returns: index of closest complex constellation symbol
         """
-        if len(y.size()) < 2:
-            y = y[:, None]
-        dist = torch.abs(y - self.constellation)
-        _, min_idx = torch.min(dist, dim=-1)
-        return min_idx
+        q = dist / torch.sum(dist, axis=1)
+        return q
 
 
 class GaussianDemapper(torch.nn.Module):
