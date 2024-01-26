@@ -896,7 +896,7 @@ class SSFMPropagationDualPol(torch.nn.Module):
 
         self.ha_basis = -self.alphaa_lin / 2 - self.betapa[0]
         self.hb_basis = -self.alphab_lin / 2 - self.betapb[0]
-        wc = w
+        wc = w.clone()
         for i in range(1, self.betapa.shape[0]):
             self.ha_basis = (
                 self.ha_basis - (1j * self.betapa[i] / math.factorial(i)) * wc
