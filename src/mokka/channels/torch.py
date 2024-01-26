@@ -6,6 +6,8 @@ import scipy.special
 import numpy as np
 import attr
 import logging
+from jaxtyping import Float, Integer
+from torch import Tensor
 from .. import utils
 from .. import functional
 from ..pulseshaping.torch import upsample, downsample, brickwall_filter
@@ -236,14 +238,14 @@ class EDFAAmpSinglePol(torch.nn.Module):
 
     span_length: int
     amp_gain: str
-    alpha_db: torch.tensor
+    alpha_db: Float[Tensor, "1"]
     amp_noise: bool
-    noise_figure: torch.tensor
+    noise_figure: Float[Tensor, "1"]
     optical_carrier_frequency: float
     bw: float
     P_input_lin: float
     padding: int
-    alpha_lin: torch.tensor = attr.field(init=False)
+    alpha_lin: Float[Tensor, "1"] = attr.field(init=False)
 
     def __attrs_pre_init__(self):
         """Pre-init for attrs classes."""
@@ -332,16 +334,16 @@ class EDFAAmpDualPol(torch.nn.Module):
 
     span_length: int
     amp_gain: str
-    alphaa_db: torch.tensor
-    alphab_db: torch.tensor
+    alphaa_db: Float[Tensor, "1"]
+    alphab_db: Float[Tensor, "1"]
     amp_noise: bool
-    noise_figure: torch.tensor
+    noise_figure: Float[Tensor, "1"]
     optical_carrier_frequency: float
     bw: float
     P_input_lin: float
     padding: int
-    alphaa_lin: torch.tensor = attr.field(init=False)
-    alphab_lin: torch.tensor = attr.field(init=False)
+    alphaa_lin: Float[Tensor, "1"] = attr.field(init=False)
+    alphab_lin: Float[Tensor, "1"] = attr.field(init=False)
 
     def __attrs_pre_init__(self):
         """Pre-init for attrs classes."""
@@ -460,16 +462,16 @@ class RamanAmpDualPol(torch.nn.Module):
     """
 
     amp_gain: str
-    alphaa_db: torch.tensor
-    alphab_db: torch.tensor
+    alphaa_db: Float[Tensor, "1"]
+    alphab_db: Float[Tensor, "1"]
     amp_noise: bool
-    noise_figure: torch.tensor
+    noise_figure: Float[Tensor, "1"]
     optical_carrier_frequency: float
     bw: float
     P_input_lin: float
     padding: int
-    alphaa_lin: torch.tensor = attr.field(init=False)
-    alphab_lin: torch.tensor = attr.field(init=False)
+    alphaa_lin: Float[Tensor, "1"] = attr.field(init=False)
+    alphab_lin: Float[Tensor, "1"] = attr.field(init=False)
 
     def __attrs_pre_init__(self):
         """Pre-init of attrs classes."""
@@ -750,22 +752,22 @@ class SSFMPropagationDualPol(torch.nn.Module):
 
     """
 
-    dt: torch.tensor
-    dz: torch.tensor
-    alphaa_db: torch.tensor
-    alphab_db: torch.tensor
-    betapa: torch.tensor
-    betapb: torch.tensor
-    gamma: torch.tensor
-    length_span: torch.tensor
-    num_span: torch.tensor
-    delta_G: torch.tensor = 1e-3
-    maxiter: torch.tensor = 4
-    psp: torch.tensor = torch.tensor([0, 0])
+    dt: Float[Tensor, "1"]
+    dz: Float[Tensor, "1"]
+    alphaa_db: Float[Tensor, "1"]
+    alphab_db: Float[Tensor, "1"]
+    betapa: Float[Tensor, "..."]
+    betapb: Float[Tensor, "..."]
+    gamma: Float[Tensor, "1"]
+    length_span: Float[Tensor, "1"]
+    num_span: Integer
+    delta_G: Float = 1e-3
+    maxiter: Integer = 4
+    psp: Float[Tensor, "2"] = torch.tensor([0, 0])
     solution_method = "elliptical"
-    alphaa_lin: torch.tensor = attr.field(init=False)
-    alphab_lin: torch.tensor = attr.field(init=False)
-    amp: object = None
+    alphaa_lin: Float[Tensor, "1"] = attr.field(init=False)
+    alphab_lin: Float[Tensor, "1"] = attr.field(init=False)
+    amp: RamanAmpDualPol | EDFAAmpDualPol | None = None
     solver_method: str = "localerror"
 
     def __attrs_pre_init__(self):

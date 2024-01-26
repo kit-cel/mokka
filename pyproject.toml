@@ -30,6 +30,7 @@ dependencies = [
   "matplotlib",
   "scipy",
   "pyqtgraph",
+  "jaxtyping",
 ]
 version = "1.0.1"
 description = "A machine learning toolbox for communications engineering"
