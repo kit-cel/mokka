@@ -72,7 +72,7 @@ class Butterfly2x2(torch.nn.Module):
             filter_taps = taps
             self.num_taps = taps.size()[1]
         # We store h_xx, h_xy, h_yy, h_yx
-        self.taps = filter_taps
+        self.register_parameter("taps", torch.nn.Parameter(filter_taps))
 
     def forward(self, y, mode="valid"):
         """
