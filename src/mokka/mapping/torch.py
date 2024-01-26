@@ -580,7 +580,7 @@ class ClassicalDemapper(torch.nn.Module):
                 torch.nn.Parameter(torch.tensor(noise_sigma, dtype=torch.float32)),
             )
         else:
-            self.noise_sigma = noise_sigma
+            self.noise_sigma = torch.as_tensor(noise_sigma)
         self.constellation = constellation
         self.softmax = torch.nn.Softmax()
 

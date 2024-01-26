@@ -40,6 +40,7 @@ class ComplexAWGN(torch.nn.Module):
             if self.N_0 is None:
                 raise Exception("N_0 needs to be defined somewhere")
             N_0 = self.N_0
+        N_0 = torch.as_tensor(N_0)
         n = torch.zeros_like(x, device=x.device).normal_()
         # If only one value is supplied for all given samples
         if n.size() != N_0.size():
