@@ -567,9 +567,12 @@ class ClassicalDemapper(torch.nn.Module):
     :param noise_sigma: $\\sigma$ for the Gaussian assumption
     :param constellation: PyTorch tensor of complex constellation symbols
     :param optimize: Use $\\sigma$ as trainable paramater
+    :param p_symbols: PyTorch tensor with symbol probabilities
     """
 
-    def __init__(self, noise_sigma, constellation, optimize=False, bitwise=True):
+    def __init__(
+        self, noise_sigma, constellation, optimize=False, bitwise=True, p_symbols=None
+    ):
         """Construct ClassicalDemapper."""
         super(ClassicalDemapper, self).__init__()
         if optimize:
@@ -590,6 +593,9 @@ class ClassicalDemapper(torch.nn.Module):
         self.bits = torch.tensor(generate_all_bits(self.m.item()).copy()).to(
             constellation.device
         )
+
+        if p_symbols is None:
+            self.register_buffer("p_symbols", torch.ones(M, dtype=torch.float) / M)
 
         with torch.no_grad():
             self.one_idx = torch.nonzero(self.bits)
@@ -616,10 +622,14 @@ class ClassicalDemapper(torch.nn.Module):
         """
         if len(y.size()) < 2:
             y = y[:, None]
-        dist = torch.exp(
-            (-1 * torch.abs(y - self.constellation) ** 2)
-            / (2 * torch.clip(self.noise_sigma, 0.001) ** 2)
-        )  # batch_size x 2**m x 1
+        dist = (
+            torch.exp(
+                (-1 * torch.abs(y - self.constellation) ** 2)
+                / (2 * torch.clip(self.noise_sigma, 0.001) ** 2)
+            )
+            * self.p_symbols[None, :]
+            * (2**self.m)
+        )  # batch_size x 2**m
 
         if self.bitwise:
             return self.forward_bitwise(dist)
@@ -652,9 +662,10 @@ class ClassicalDemapper(torch.nn.Module):
         Perform symbolwise soft demapping of complex symbols.
 
         :params y: Received complex symbols
-        :returns: index of closest complex constellation symbol
+        :returns: q-values for each constellation symbol
         """
-        q = dist / torch.sum(dist, axis=1)
+        # print("dist: ", dist)
+        q = dist / torch.sum(dist, axis=1)[:, None]
         return q
 
 
@@ -1116,6 +1127,6 @@ def MB_dist(lmbd, symbols):
     :params lambda: Lambda parameter of the Maxwell-Boltzmann distribution
     :params symbols: Complex constellation symbols
     """
-    mb_dist = torch.exp(-lmbd * torch.abs(symbols) ** 2)
+    mb_nist = torch.exp(-lmbd * torch.abs(symbols) ** 2)
     mb_dist_norm = mb_dist / torch.sum(mb_dist)
     return mb_dist_norm
