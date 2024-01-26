@@ -95,8 +95,6 @@ class CustomConstellationMapper(torch.nn.Module):
             .expand(*b.size()[:-1], *((-1,) * (self.symbols.dim())))
             .to(device)
         )
-        print(B_hot.size())
-        print(c.size())
         x = torch.sum(B_hot * c, 1)
         x = torch.unsqueeze(x, 1)
         return x  # , idx[1]
