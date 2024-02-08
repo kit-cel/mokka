@@ -72,8 +72,13 @@ class Butterfly2x2(torch.nn.Module):
             filter_taps = taps
             self.num_taps = taps.size()[1]
         # We store h_xx, h_xy, h_yy, h_yx
-        self.register_parameter("taps", torch.nn.Parameter(filter_taps))
-
+        if trainable == True:
+            self.register_parameter("taps", torch.nn.Parameter(filter_taps))
+        elif trainable == False:
+            self.taps = filter_taps
+        else:
+            raise ValueError("trainable must be set to either True or False.")
+        
     def forward(self, y, mode="valid"):
         """
         Perform 2x2 convolution with taps in self.taps.
@@ -92,6 +97,29 @@ class Butterfly2x2(torch.nn.Module):
         result_y = convolve_overlap_save(
             y[1, :], self.taps[2, :], mode=mode
         ) + convolve_overlap_save(y[0, :], self.taps[3, :], mode=mode)
+
+        return torch.cat((result_x.unsqueeze(0), result_y.unsqueeze(0)), dim=0)
+    
+    def forward_abssquared(self, y, mode="valid"):
+        """
+        Perform 2x2 convolution with absolut-squared of taps in self.taps.
+
+        :params y: Signal to convolve
+        :params mode: convolution mode (either valid, same, or full)
+        :returns: convolved signal
+        """
+        assert y.dim() == 2
+        assert y.size()[0] == 2
+        #assert y.dtype == torch.complex64
+
+        h_abs_sq = self.taps.real**2 + self.taps.imag**2
+
+        result_x = convolve_overlap_save(
+            y[0, :], h_abs_sq[0, :], mode=mode
+        ).real + convolve_overlap_save(y[1, :], h_abs_sq[1, :], mode=mode).real
+        result_y = convolve_overlap_save(
+            y[1, :], h_abs_sq[2, :], mode=mode
+        ).real + convolve_overlap_save(y[0, :], h_abs_sq[3, :], mode=mode).real
 
         return torch.cat((result_x.unsqueeze(0), result_y.unsqueeze(0)), dim=0)
 
