@@ -31,3 +31,6 @@ pip install '.[torch,tf,dev,remotelog]'
 This package provides a range of modules, covering a range of functions within a communication system.
 To access functionality within a specific module first `import mokka` and then access of modules is possible, e.g. `mokka.mapping.torch` provides
 constellation mappers and demappers implemented with and compatible to the PyTorch framework.
+
+## Acknowledgment
+This  work  has  received  funding  from  the  European  Re-search Council (ERC) under the European Union's Horizon2020 research and innovation programme (grant agreement No. 101001899).
