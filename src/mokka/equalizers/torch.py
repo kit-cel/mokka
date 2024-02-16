@@ -62,8 +62,9 @@ class Butterfly2x2(torch.nn.Module):
         if taps is None:
             if num_taps is None:
                 raise ValueError("Either taps or num_taps must be set")
-            filter_taps = torch.zeros((4, num_taps), dtype=torch.complex64)
-            filter_taps[:, num_taps // 2] = 1.0
+            filter_taps = torch.zeros((4, num_taps), dtype=torch.complex64) #0.1* torch.ones((4, num_taps), dtype=torch.complex64) #torch.zeros((4, num_taps), dtype=torch.complex64)
+            #filter_taps = 1.0
+            filter_taps[::, num_taps // 2] = 1.0 #1.0
             self.num_taps = num_taps
         else:
             assert taps.dim() == 2
