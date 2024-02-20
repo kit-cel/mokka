@@ -3,7 +3,7 @@
 import torch
 import numpy as np
 
-from ..functional.torch import convolve_overlap_save
+from ..functional.torch import convolve_overlap_save, convolve
 
 
 class CD_compensation(torch.nn.Module):
@@ -48,7 +48,7 @@ class Butterfly2x2(torch.nn.Module):
     for equalization.
     """
 
-    def __init__(self, taps=None, num_taps=None, trainable=False):
+    def __init__(self, taps=None, num_taps=None, trainable=False, timedomain=True):
         """
         Initialize Butterfly2x2 Filter.
 
@@ -62,9 +62,9 @@ class Butterfly2x2(torch.nn.Module):
         if taps is None:
             if num_taps is None:
                 raise ValueError("Either taps or num_taps must be set")
-            filter_taps = torch.zeros((4, num_taps), dtype=torch.complex64) #0.1* torch.ones((4, num_taps), dtype=torch.complex64) #torch.zeros((4, num_taps), dtype=torch.complex64)
-            #filter_taps = 1.0
-            filter_taps[::, num_taps // 2] = 1.0 #1.0
+            filter_taps = torch.zeros((4, num_taps), dtype=torch.complex64)
+            filter_taps[0, num_taps // 2] = 1.0
+            filter_taps[2, num_taps // 2] = 1.0
             self.num_taps = num_taps
         else:
             assert taps.dim() == 2
@@ -76,10 +76,15 @@ class Butterfly2x2(torch.nn.Module):
         if trainable == True:
             self.register_parameter("taps", torch.nn.Parameter(filter_taps))
         elif trainable == False:
-            self.taps = filter_taps
+            self.register_buffer("taps", filter_taps)
         else:
             raise ValueError("trainable must be set to either True or False.")
-        
+
+        if timedomain:
+            self.convolve = convolve
+        else:
+            self.convolve = convolve_overlap_save
+
     def forward(self, y, mode="valid"):
         """
         Perform 2x2 convolution with taps in self.taps.
@@ -92,15 +97,15 @@ class Butterfly2x2(torch.nn.Module):
         assert y.size()[0] == 2
         assert y.dtype == torch.complex64
 
-        result_x = convolve_overlap_save(
-            y[0, :], self.taps[0, :], mode=mode
-        ) + convolve_overlap_save(y[1, :], self.taps[1, :], mode=mode)
-        result_y = convolve_overlap_save(
-            y[1, :], self.taps[2, :], mode=mode
-        ) + convolve_overlap_save(y[0, :], self.taps[3, :], mode=mode)
+        result_x = self.convolve(y[0, :], self.taps[0, :], mode=mode) + self.convolve(
+            y[1, :], self.taps[1, :], mode=mode
+        )
+        result_y = self.convolve(y[1, :], self.taps[2, :], mode=mode) + self.convolve(
+            y[0, :], self.taps[3, :], mode=mode
+        )
 
         return torch.cat((result_x.unsqueeze(0), result_y.unsqueeze(0)), dim=0)
-    
+
     def forward_abssquared(self, y, mode="valid"):
         """
         Perform 2x2 convolution with absolut-squared of taps in self.taps.
@@ -111,16 +116,18 @@ class Butterfly2x2(torch.nn.Module):
         """
         assert y.dim() == 2
         assert y.size()[0] == 2
-        #assert y.dtype == torch.complex64
+        # assert y.dtype == torch.complex64
 
         h_abs_sq = self.taps.real**2 + self.taps.imag**2
 
-        result_x = convolve_overlap_save(
-            y[0, :], h_abs_sq[0, :], mode=mode
-        ).real + convolve_overlap_save(y[1, :], h_abs_sq[1, :], mode=mode).real
-        result_y = convolve_overlap_save(
-            y[1, :], h_abs_sq[2, :], mode=mode
-        ).real + convolve_overlap_save(y[0, :], h_abs_sq[3, :], mode=mode).real
+        result_x = (
+            self.convolve(y[0, :], h_abs_sq[0, :], mode=mode).real
+            + self.convolve(y[1, :], h_abs_sq[1, :], mode=mode).real
+        )
+        result_y = (
+            self.convolve(y[1, :], h_abs_sq[2, :], mode=mode).real
+            + self.convolve(y[0, :], h_abs_sq[3, :], mode=mode).real
+        )
 
         return torch.cat((result_x.unsqueeze(0), result_y.unsqueeze(0)), dim=0)
 
