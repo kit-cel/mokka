@@ -83,7 +83,7 @@ class PulseShaping(torch.nn.Module):
         # print('current ir_norm',torch.linalg.norm(self.impulse_response))
 
     @classmethod
-    def get_rc_ir(cls, syms, r, n_up, learnable=False):
+    def get_rc_ir(cls, syms, r, n_up, learnable=False, normalize_symbol=False):
         """Determine normed coefficients of an RC filter.
 
         Formula out of: K.-D. Kammeyer, Nachrichtenübertragung
@@ -99,7 +99,7 @@ class PulseShaping(torch.nn.Module):
         with torch.no_grad():
             # initialize output length and sample time
             T_symbol = 1.0
-            T_sample = 1.0 / n_up
+            T_sample = 1.0 / torch.as_tensor(n_up)
             # length of one sample is the symbol-duration divided
             # by the oversampling factor (=1/sampling rate)
             T_ir = 2 * syms * T_symbol
@@ -119,25 +119,39 @@ class PulseShaping(torch.nn.Module):
                 if t_steps[k] == 0:
                     ir[k] = 1.0 / T_symbol
 
-                elif r != 0 and torch.abs(t_steps[k]) == T_symbol / (2.0 * r):
-                    ir[k] = r / (2.0 * T_symbol) * torch.sin(torch.pi / (2.0 * r))
+                elif r != 0 and torch.abs(t_steps[k]) == T_symbol / (
+                    2.0 * torch.as_tensor(r)
+                ):
+                    ir[k] = (
+                        torch.as_tensor(r)
+                        / (2.0 * T_symbol)
+                        * torch.sin(torch.pi / (2.0 * torch.as_tensor(r)))
+                    )
 
                 else:
                     ir[k] = (
                         torch.sin(torch.pi * t_steps[k] / T_symbol)
                         / torch.pi
                         / t_steps[k]
-                        * torch.cos(r * torch.pi * t_steps[k] / T_symbol)
-                        / (1.0 - (2.0 * r * t_steps[k] / T_symbol) ** 2)
+                        * torch.cos(
+                            torch.as_tensor(r) * torch.pi * t_steps[k] / T_symbol
+                        )
+                        / (
+                            1.0
+                            - (2.0 * torch.as_tensor(r) * t_steps[k] / T_symbol) ** 2
+                        )
                     )
 
             # Norming on Energy = 1
-            ir /= torch.linalg.norm(ir) * torch.sqrt(T_sample)
+            ir /= torch.linalg.norm(ir)
+
+            if normalize_symbol:
+                ir /= torch.sqrt(T_sample)
 
         return cls(ir, learnable)
 
     @classmethod
-    def get_rrc_ir(cls, syms, r, n_up, learnable=False):
+    def get_rrc_ir(cls, syms, r, n_up, learnable=False, normalize_symbol=False):
         """Determine normed coefficients of an RRC filter.
 
         This function is adapted from Sourcecode written by Dominik Rimpf and was
@@ -205,8 +219,10 @@ class PulseShaping(torch.nn.Module):
                     )
 
             # Norming on Energy = 1
-            ir /= torch.linalg.norm(ir) * torch.sqrt(torch.tensor(T_sample))
+            ir /= torch.linalg.norm(ir)
             ir = ir.type(torch.complex64)
+            if normalize_symbol:
+                ir /= torch.sqrt(torch.tensor(T_sample))
         return cls(ir, learnable)
 
 
