@@ -665,6 +665,7 @@ class ClassicalDemapper(torch.nn.Module):
         :returns: q-values for each constellation symbol
         """
         # print("dist: ", dist)
+        dist = dist + 1e-8
         q = dist / torch.sum(dist, axis=1)[:, None]
         return q
 
