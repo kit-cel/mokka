@@ -195,3 +195,189 @@ def ELBO_DP(y, q, sps, constellation_symbols, butterfly_filter, p_constellation=
     var = C / (N - L + 1) * sps
     return loss, var
 
+##############################################################################################
+
+class VAE_LE_DP(torch.nn.Module):
+    """
+    Class that can be dropped in to perform equalization
+    """
+
+    def __init__(
+        self,
+        num_taps_forward,
+        num_taps_backward,
+        demapper,
+        sps,
+        block_size=200,
+        lr=0.5e-2,
+        requires_q=False,
+        IQ_separate=False,
+        var_from_estimate=False,
+        device='cpu'
+    ):
+        super(VAE_LE_DP, self).__init__()
+
+        self.register_buffer("block_size", torch.as_tensor(block_size))
+        self.register_buffer("sps", torch.as_tensor(sps))
+        self.register_buffer("start_lr", torch.as_tensor(lr))
+        self.register_buffer("lr", torch.as_tensor(lr))
+        self.register_buffer("num_taps_forward", torch.as_tensor(num_taps_forward))
+        self.register_buffer("num_taps_backward", torch.as_tensor(num_taps_backward))
+        self.register_buffer("requires_q", torch.as_tensor(requires_q))
+        self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
+        self.register_buffer("var_from_estimate", torch.as_tensor(var_from_estimate))
+        self.butterfly_forward = Butterfly2x2(
+            num_taps=num_taps_forward, trainable=True, timedomain=True, device=device
+        )
+        self.butterfly_backward = Butterfly2x2(
+            num_taps=num_taps_backward, trainable=True, timedomain=True, device=device
+        )
+        self.demapper = demapper
+        self.optimizer = torch.optim.Adam(
+            self.butterfly_forward.parameters(),
+            lr=self.start_lr,  # 0.5e-2,
+        )
+        self.optimizer.add_param_group({"params": self.butterfly_backward.parameters()})
+
+        self.optimizer_var = torch.optim.Adam(
+            [self.demapper.noise_sigma],
+            lr=0.5,  # 0.5e-2,
+        )
+
+    def reset(self):
+        self.lr = self.start_lr.clone()
+        self.butterfly_forward = Butterfly2x2(
+            num_taps=self.num_taps_forward.item(), trainable=True, timedomain=True, device=self.butterfly_forward.taps.device
+        )
+        self.butterfly_backward = Butterfly2x2(
+            num_taps=self.num_taps_backward.item(), trainable=True, timedomain=True, device=self.butterfly_forward.taps.device
+        )
+        self.optimizer = torch.optim.Adam(
+            self.butterfly_forward.parameters(),
+            lr=self.lr,
+        )
+        self.optimizer.add_param_group({"params": self.butterfly_backward.parameters()})
+
+    def forward(self, y):
+        # We need to produce enough q values on each forward pass such that we can
+        # calculate the ELBO loss in the backward pass & update the taps
+
+        num_samps = y.shape[1]
+        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
+
+        out = []
+        out_q = []
+        # We start our loop already at num_taps  (because we cannot equalize the start)
+        # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
+        # We will process sps * block_size - 2 * num_taps because we will cut out the first and last block
+
+        index_padding = (self.butterfly_forward.num_taps - 1) // 2
+        for i, k in enumerate(
+            range(
+                index_padding,
+                num_samps
+                - index_padding
+                - self.sps
+                * self.block_size,  # Back-off one block-size + filter_overlap from end to avoid overrunning
+                self.sps * self.block_size,
+            )
+        ):
+            # if i % (20000//self.block_size) == 0 and i != 0:
+                # print("Updating learning rate")
+                # self.update_lr(self.lr * 0.5)
+            # logger.debug("VAE LE block: %s", i)
+            in_index = torch.arange(
+                k - index_padding,
+                k + self.sps * self.block_size + index_padding,
+            )
+            # Equalization will give sps * block_size samples (because we add (num_taps - 1) in the beginning)
+            y_hat = self.butterfly_forward(y[:, in_index], "valid")
+
+            # We downsample so we will have floor(((sps * block_size - num_taps + 1) / sps) = floor(block_size - (num_taps - 1)/sps)
+            y_symb = y_hat[
+                :, 0 :: self.sps
+            ]  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
+
+            if self.IQ_separate == True:
+                q_hat = torch.cat(
+                    (
+                        torch.cat(
+                            (
+                                self.demapper(y_symb[0, :].real).unsqueeze(0),
+                                self.demapper(y_symb[0, :].imag).unsqueeze(0),
+                            ), axis=-1
+                        ),
+                        torch.cat(
+                            (
+                                self.demapper(y_symb[1, :].real).unsqueeze(0),
+                                self.demapper(y_symb[1, :].imag).unsqueeze(0),
+                            ), axis=-1
+                        ),
+                    ), axis=0
+                )
+            else:
+                q_hat = torch.cat(
+                    (
+                        self.demapper(y_symb[0, :]).unsqueeze(0),
+                        self.demapper(y_symb[1, :]).unsqueeze(0),
+                    )
+                )
+            # We calculate the loss with less symbols, since the forward operation with "valid"
+            # is missing some symbols
+            # We assume the symbol of interest is at the center tap of the filter
+            y_index = in_index[
+                (self.butterfly_forward.num_taps - 1)
+                // 2 : -((self.butterfly_forward.num_taps - 1) // 2)
+            ]
+            loss, var = ELBO_DP(
+            #loss, var = ELBO_DP(
+                y[:, y_index],
+                q_hat,
+                self.sps,
+                self.demapper.constellation,
+                self.butterfly_backward,
+                p_constellation=self.demapper.p_symbols,
+                IQ_separate=self.IQ_separate
+            )
+            
+            # print("noise_sigma: ", self.demapper.noise_sigma)
+            loss.backward()
+            self.optimizer.step()
+            #self.optimizer_var.step()
+            self.optimizer.zero_grad()
+            #self.optimizer_var.zero_grad()
+            
+            if self.var_from_estimate == True:
+                self.demapper.noise_sigma = torch.clamp(
+                    torch.mean(var.detach().clone()), min=torch.tensor(0.05, requires_grad=False, device=q_hat.device) , max=2*self.demapper.noise_sigma.detach().clone() #torch.sqrt(var).detach()), min=0.1
+                )
+
+            output_symbols = y_symb[
+                :, : self.block_size
+            ]  # - self.butterfly_forward.num_taps // 2]
+            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
+            out.append(
+                output_symbols
+            )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
+            
+            output_q = q_hat[
+                :, : self.block_size, :
+            ]
+            out_q.append(
+                output_q
+            )
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        if self.requires_q == True:
+            return torch.cat(out, axis=1), torch.cat(out_q, axis=1)
+        else:
+            return torch.cat(out, axis=1)
+
+    def update_lr(self, new_lr):
+        self.lr = new_lr
+        for group in self.optimizer.param_groups:
+           group["lr"] = self.lr
+
+    def update_var(self, new_lr):
+        self.lr = new_lr
+        for group in self.optimizer.param_groups:
+           group["lr"] = self.lr

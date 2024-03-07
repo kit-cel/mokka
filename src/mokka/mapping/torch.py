@@ -626,11 +626,11 @@ class ClassicalDemapper(torch.nn.Module):
             y = y[:, None]
         dist = (
             torch.exp(
-                (-1 * torch.abs(y - self.constellation) ** 2)
-                / (2 * torch.clip(self.noise_sigma, 0.001) ** 2)
+                (-1 * torch.abs(y - self.constellation.to(device=y.device)) ** 2)
+                / (2 * torch.clip(self.noise_sigma.to(device=y.device), 0.001) ** 2)
             )
-            * self.p_symbols[None, :]
-            * (2**self.m)
+            * self.p_symbols[None, :].to(device=y.device)
+            * (2**self.m.to(device=y.device))
         )  # batch_size x 2**m
 
         if self.bitwise:
