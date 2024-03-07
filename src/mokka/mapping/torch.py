@@ -596,6 +596,8 @@ class ClassicalDemapper(torch.nn.Module):
 
         if p_symbols is None:
             self.register_buffer("p_symbols", torch.ones(M, dtype=torch.float) / M)
+        else:
+            self.register_buffer("p_symbols", p_symbols)
 
         with torch.no_grad():
             self.one_idx = torch.nonzero(self.bits)

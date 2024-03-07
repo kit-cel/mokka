@@ -116,3 +116,82 @@ class CMA(torch.nn.Module):
 
     def get_error_signal(self):
         return self.out_e
+
+
+
+##############################################################################################
+########################### Variational Autoencoer based Equalizer ###########################
+##############################################################################################
+    
+def ELBO_DP(y, q, sps, constellation_symbols, butterfly_filter, p_constellation=None, IQ_separate=False):
+    """
+    Calculate dual-pol. ELBO loss for arbitrary complex constellations.
+
+    Instead of splitting into in-phase and quadrature we can just
+    the whole thing.
+    This implements the dual-polarization case.
+    """
+    # Input is a sequence y of length N
+    N = y.shape[1]
+    # Now we have two polarizations in the first dimension
+    # We assume the same transmit constellation for both, calculating
+    # q needs to be shaped 2 x N x M  -> for each observation on each polarization we have M q-values
+    # we have M constellation symbols
+    L = butterfly_filter.taps.shape[1]
+    L_offset = (L - 1) // 2
+    if p_constellation is None:
+        p_constellation = (
+            torch.ones_like(constellation_symbols) / constellation_symbols.shape[0]
+        )
+
+    # # Precompute E_Q{c} = sum( q * c) where c is x and |x|**2
+    E_Q_x = torch.zeros(2,N, device=q.device, dtype=torch.complex64)
+    E_Q_x_abssq = torch.zeros(2,N, device=q.device, dtype=torch.float32)
+    if IQ_separate == True:
+        num_lev = constellation_symbols.shape[0]
+        E_Q_x[:,::sps] = torch.complex(
+                torch.sum(q[:,:,:num_lev] * constellation_symbols.unsqueeze(0).unsqueeze(0), dim=-1), 
+                torch.sum(q[:,:,num_lev:] * constellation_symbols.unsqueeze(0).unsqueeze(0), dim=-1)
+            )
+        E_Q_x_abssq[:,::sps] = torch.add( # Precompute E_Q{|x|^2}
+                torch.sum(q[:,:,:num_lev] * (constellation_symbols**2).unsqueeze(0).unsqueeze(0), dim=-1), 
+                torch.sum(q[:,:,num_lev:] * (constellation_symbols**2).unsqueeze(0).unsqueeze(0), dim=-1)
+            )
+        p_constellation = p_constellation.repeat(2)
+    else: 
+        E_Q_x[:,::sps] = torch.sum( q * constellation_symbols.unsqueeze(0).unsqueeze(0), axis=-1 )
+        E_Q_x_abssq[:,::sps] = torch.sum( q * (constellation_symbols.real**2 + constellation_symbols.imag**2).unsqueeze(0).unsqueeze(0), axis=-1 )
+
+    # Term A - sum all the things, but spare the first dimension, since the two polarizations
+    # are sorta independent
+    bias = 1e-14
+    A = torch.sum(
+        q[:,L_offset:-L_offset,:] * torch.log((q[:,L_offset:-L_offset,:] / p_constellation.unsqueeze(0).unsqueeze(0)) + bias),
+        dim=(1, 2),
+    )
+
+    # Precompute h \ast E_Q{x}
+    h_conv_E_Q_x = butterfly_filter(
+        E_Q_x, mode="valid"
+    )  # Due to definition that we assume the symbol is at the center tap we remove (filter_length - 1)//2 at start and end
+    # Limit the length of y to the "computable space" because y depends on more past values than given
+    # We try to generate the received symbol sequence with the estimated symbol sequence
+    C = torch.sum(
+        y[:, L_offset:-L_offset].real ** 2 + y[:, L_offset:-L_offset].imag ** 2, axis=1
+    )
+    C -= 2 * torch.sum(y[:, L_offset:-L_offset].conj() * h_conv_E_Q_x, axis=1).real
+    C += torch.sum(
+        h_conv_E_Q_x.real**2
+        + h_conv_E_Q_x.imag**2
+        + butterfly_filter.forward_abssquared(
+            (E_Q_x_abssq - torch.abs(E_Q_x) ** 2).to(torch.float32), mode="valid"
+        ),
+        axis=1,
+    )
+
+    # We compute B without constants
+    # B_tilde = -N * torch.log(C)
+    loss = torch.sum(A) + torch.sum((N - L + 1) / sps * torch.log(C + 1e-8))
+    var = C / (N - L + 1) * sps
+    return loss, var
+
