@@ -168,3 +168,29 @@ def unwrap_torch(*args):
     :param period: which periodicity the signal has
     """
     return unwrap(*args)
+
+
+def Jones2Mueller(J):
+    """
+    Takes a 2x2 complex Jones matrix and returns a 4x4 real Mueller matrix
+    """
+    # point-wise multiply
+    U = (
+        1
+        / torch.sqrt(torch.as_tensor(2.0))
+        * torch.tensor(
+            [[1, 0, 0, 1], [1, 0, 0, -1], [0, 1, 1, 0], [0, -1j, 1j, 0]],
+            dtype=torch.complex64,
+        )
+    )
+    U_inv = (
+        1
+        / torch.sqrt(torch.as_tensor(2.0))
+        * torch.tensor(
+            [[1, 1, 0, 0], [0, 0, 1, 1j], [0, 0, 1, -1j], [1, -1, 0, 0]],
+            dtype=torch.complex64,
+        )
+    )
+    J_expanded = torch.kron(J, J.conj().resolve_conj())
+    M = torch.matmul(torch.matmul(U, J_expanded), U_inv).real
+    return M

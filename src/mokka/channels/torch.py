@@ -1,6 +1,7 @@
 """Channels sub-module implemented within the PyTorch framework."""
 import torch
-#import torchaudio
+
+# import torchaudio
 import math
 import scipy.special
 import numpy as np
@@ -1232,3 +1233,85 @@ class WDMDemux(torch.nn.Module):
             results.append(signal_down)
         results = torch.cat(results, dim=0)
         return results
+
+
+class PMDElement(torch.nn.Module):
+    """
+    Static and dynamic PMD Element according to Czegledi (2016)
+
+    Note: for SSFM only static PMD is correct
+    """
+
+    def __init__(self, sigma_p):
+        super(PMDElement, self).__init__()
+        # Apply PMD using matrix J_k which can be calculated from J(\alpha_k)
+        # Pauli spin matrices
+        self.sigma = torch.tensor(
+            [[[1, 0], [0, -1]], [[0, 1], [1, 0]], [[0, -1j], [1j, 0]]],
+            dtype=torch.complex64,
+        )
+        self.J_k1 = torch.eye(2, dtype=torch.complex64)
+        # self.alpha = torch.zeros((3,), dtype=torch.float32).normal_()
+        self.sigma_p = sigma_p
+
+        # Initialize on full poincare sphere
+        g = torch.zeros((4,), dtype=torch.float32).normal_()
+        alpha0 = g / torch.linalg.vector_norm(g)
+        theta = torch.acos(alpha0[0])
+        self.alpha = (alpha0[1:] / torch.sin(theta)) * theta
+        # self.alpha = (g[1:] / torch.linalg.vector_norm(g[1:])) * theta
+        self.theta0 = theta
+
+    @property
+    def a(self):
+        return self.alpha / self.theta
+
+    @property
+    def theta(self):
+        return torch.linalg.vector_norm(self.alpha)
+
+    @property
+    def J(self):
+        return torch.matmul(
+            torch.eye(2, dtype=torch.complex64) * torch.cos(self.theta)
+            - 1j
+            * torch.sum(self.a[:, None, None] * self.sigma, 0)
+            * torch.sin(self.theta),
+            self.J_k1,
+        )
+
+    def step(self):
+        self.alpha = torch.zeros((3,), dtype=torch.float32).normal_() * self.sigma_p
+        self.J_k1 = self.J
+        return self.J_k1
+
+    def steps(self, k=1):
+        alphas = torch.zeros((k, 3), dtype=torch.float32).normal_() * self.sigma_p
+        thetas = torch.linalg.vector_norm(alphas, dim=1)
+        a_s = alphas / thetas[:, None]
+        J_delta = torch.eye(2, dtype=torch.complex64)[None, :] * torch.cos(thetas)[
+            :, None, None
+        ] - 1j * torch.sum(a_s[:, :, None, None] * self.sigma[None, :], 1) * torch.sin(
+            thetas[:, None, None]
+        )
+        results = [torch.matmul(J_delta[0, :, :], self.J_k1)]
+        for J_d in J_delta[1:]:
+            results.append(torch.matmul(J_d, results[-1]))
+        self.J_k1 = results[-1]
+        return torch.stack(results)
+
+    def forward(self, signal: torch.Tensor):
+        """
+        Process a dual polarization signal and apply PMD with a random walk to it.
+
+        :param signal:
+        """
+        # In the first dimension we have the number of samples we need to apply PMD
+        num_steps = signal.shape[0]
+        # Static case
+        if self.sigma_p == 0.0:
+            return torch.matmul(self.J_k1.unsqueeze(0), signal).squeeze()
+        # Dynamic/time-varying case
+        J_k = self.steps(num_steps)
+        signal_out = torch.bmm(J_k, signal.unsqueeze(-1)).squeeze()
+        return signal_out
