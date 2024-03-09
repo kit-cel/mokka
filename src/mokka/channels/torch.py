@@ -7,7 +7,7 @@ import scipy.special
 import numpy as np
 import attr
 import logging
-from jaxtyping import Float, Integer
+from jaxtyping import Float, Integer, Bool
 from torch import Tensor
 from .. import utils
 from .. import functional
@@ -771,6 +771,9 @@ class SSFMPropagationDualPol(torch.nn.Module):
     alphab_lin: Float[Tensor, "1"] = attr.field(init=False)
     amp: RamanAmpDualPol | EDFAAmpDualPol | None = None
     solver_method: str = "localerror"
+    pmd_simulation: Bool = False
+    pmd_sigma: Float[Tensor, "1"] = torch.tensor(0.0)
+    pmd_correlation_length: Float[Tensor, "1"] = torch.tensor(0.1)
 
     def __attrs_pre_init__(self):
         """Pre-init for attrs classes."""
@@ -819,6 +822,37 @@ class SSFMPropagationDualPol(torch.nn.Module):
             self.n2_basis = (4j / 3) * self.gamma
         else:
             raise ValueError("Unknown solution method.")
+
+        # To simulate PMD initialize PMDElements to be uniformly distributed on the Poincare sphere
+        # For static PMD this does not change
+        # For dynamic PMD the SOP performs a random walk on the Poincare sphere
+
+        # Currently only fixedstep with the correlation length as step works,
+        # other methods of inserting steps in the localerror method is unstable due
+        # to numerical imprecision
+
+        self.pmd_sigma = torch.as_tensor(self.pmd_sigma)
+        self.pmd_correlation_length = torch.as_tensor(self.pmd_correlation_length)
+
+        if self.pmd_simulation:
+            assert self.solver_method == "fixedstep"
+            # Make the stepsize half the size of correlation length since
+            # we take two steps per loop
+            self.dz = self.pmd_correlation_length / 2.0
+        num_pmd_elements = (
+            int(
+                (
+                    torch.ceil(
+                        self.length_span * self.num_span / self.pmd_correlation_length
+                    )
+                ).item()
+            )
+            + 1
+        )
+        self.pmd_elements = [
+            [PMDElement(self.pmd_sigma) for _ in range(num_pmd_elements)]
+            for _ in range(self.num_span)
+        ]
 
     def get_operators(self, dz):
         """Obtain linear operators for given step length."""
@@ -916,7 +950,7 @@ class SSFMPropagationDualPol(torch.nn.Module):
         # logger.info("u1 norm %s", torch.linalg.vector_norm(u1).item())
         # logger.info("u2 norm %s", torch.linalg.vector_norm(u2).item())
         for span in range(self.num_span):
-            # logger.info("SSFM Span %s/%s", span + 1, self.num_span.item())
+            logger.info("SSFM Span %s/%s", span + 1, self.num_span)
             z = 0
             iter = 0
             (
@@ -942,7 +976,37 @@ class SSFMPropagationDualPol(torch.nn.Module):
                 NOPdz,
             ) = self.get_operators(dz)
             new_dz = dz
+            if self.solver_method == "fixedstep":
+                new_dz = self.pmd_correlation_length / 2
             while z + 2 * new_dz <= self.length_span and new_dz != 0:
+                logger.debug("z: %s km", z)
+                # For local error also propagate once with 2*new_dz and compare the error
+                delta_pmd = (
+                    (2 * new_dz) + z
+                ) // self.pmd_correlation_length - z // self.pmd_correlation_length
+                logger.debug("delta_pmd: %s", delta_pmd)
+                if (
+                    self.pmd_simulation
+                    and not self.solver_method == "fixedstep"
+                    and delta_pmd > 0
+                ):
+                    logger.debug("2*new_dz: %s", 2 * new_dz)
+                    diff = self.pmd_correlation_length - torch.remainder(
+                        z, self.pmd_correlation_length
+                    )
+                    logger.debug("diff: %s", diff)
+                    # Ignore if the length difference is too small
+                    if diff > 1e-3:
+                        new_dz = (
+                            (
+                                (z + self.pmd_correlation_length)
+                                // self.pmd_correlation_length
+                            )
+                            * self.pmd_correlation_length
+                            - z
+                        ) / 2
+                logger.debug("new_dz: %s km", new_dz)
+                # Calculate new operators for length new_dz and length 2*new_dz
                 if new_dz != dz:
                     dz = new_dz
                     (
@@ -968,6 +1032,7 @@ class SSFMPropagationDualPol(torch.nn.Module):
                         NOPdz,
                     ) = self.get_operators(dz)
 
+                # Execute forward step twice with size new_dz
                 u1f, u2f = symmetrical_SSPROPV_step(
                     u1, u2, h11_dz_2, h12_dz_2, h21_dz_2, h22_dz_2, NOPdz
                 )
@@ -979,22 +1044,28 @@ class SSFMPropagationDualPol(torch.nn.Module):
                 # logger.info("u2c norm %s", torch.linalg.vector_norm(u2c).item())
                 # logger.info("u1f norm %s", torch.linalg.vector_norm(u1f).item())
                 # logger.info("u2f norm %s", torch.linalg.vector_norm(u2f).item())
+
+                # Propagate one step with length 2*new_dz
                 if self.solution_method == "localerror":
                     u1c, u2c = symmetrical_SSPROPV_step(
                         u1, u2, h11_dz, h12_dz, h21_dz, h22_dz, NOP2dz
                     )
+                    # Compute the difference between propagation with new_dz and 2*new_dz
                     delta = (
                         torch.linalg.vector_norm(u1f - u1c)
                         + torch.linalg.vector_norm(u2f - u2c)
                     ) / (torch.linalg.vector_norm(u1f) + torch.linalg.vector_norm(u2f))
                     # logger.info("dz is %s, delta is %s", dz.item(), delta.item())
 
+                    # If the error of 2*new_dz and new_dz steps is too large, reduce stepsize and rerun this step
                     if delta > 2 * self.delta_G:
                         new_dz = dz / 2
                         good_sol_flag = False
                         iter = iter + 1
+                    # If the error of 2*new_dz and new_dz steps is OK, reduce stepsize for next step
                     elif self.delta_G <= delta <= 2 * self.delta_G:
                         new_dz = dz / 1.259921049894873
+                    # If the error is really small, increase stepsize for next step
                     elif delta < 0.5 * self.delta_G:
                         new_dz = dz * 1.259921049894873
 
@@ -1011,6 +1082,20 @@ class SSFMPropagationDualPol(torch.nn.Module):
 
                     z = z + 2 * dz
 
+                    if self.pmd_simulation and (
+                        torch.remainder(z, self.pmd_correlation_length) < 1e-3
+                        or self.pmd_correlation_length
+                        - torch.remainder(z, self.pmd_correlation_length)
+                        < 1e-3
+                    ):
+                        pmd_index = int(
+                            torch.round(z / self.pmd_correlation_length).item()
+                        )
+                        logger.debug("pmd index: %s", pmd_index)
+                        pmd_element = self.pmd_elements[span][pmd_index]
+                        u1, u2 = torch.unbind(
+                            pmd_element(torch.stack((u1, u2), dim=1)), dim=1
+                        )
                     if self.amp is not None and self.amp.amp_type == "Raman":
                         u1, u2 = self.amp(u1, u2, 2 * dz)  # TODO Where to add noise?
 

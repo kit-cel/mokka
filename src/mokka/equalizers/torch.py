@@ -48,7 +48,9 @@ class Butterfly2x2(torch.nn.Module):
     for equalization.
     """
 
-    def __init__(self, taps=None, num_taps=None, trainable=False, timedomain=True, device='cpu'):
+    def __init__(
+        self, taps=None, num_taps=None, trainable=False, timedomain=True, device="cpu"
+    ):
         """
         Initialize Butterfly2x2 Filter.
 
@@ -62,7 +64,9 @@ class Butterfly2x2(torch.nn.Module):
         if taps is None:
             if num_taps is None:
                 raise ValueError("Either taps or num_taps must be set")
-            filter_taps = torch.zeros((4, num_taps), dtype=torch.complex64, device=device)
+            filter_taps = torch.zeros(
+                (4, num_taps), dtype=torch.complex64, device=device
+            )
             filter_taps[0, num_taps // 2] = 1.0
             filter_taps[2, num_taps // 2] = 1.0
             self.num_taps = num_taps
@@ -193,3 +197,43 @@ class Butterfly4x4(torch.nn.Module):
                     torch.complex(result[2], result[3]),
                 )
             )
+
+
+def correct_start_polarization(signal, pilot_signal):
+    """
+    Correlate the signal with a known pilot_signal and
+    """
+    cross_corr = torch.stack(
+        (
+            convolve_overlap_save(
+                signal[0, :],
+                torch.flip(pilot_signal[0, :].conj().resolve_conj(), dims=(0,)),
+                "valid",
+            ),
+            convolve_overlap_save(
+                signal[1, :],
+                torch.flip(pilot_signal[1, :].conj().resolve_conj(), dims=(0,)),
+                "valid",
+            ),
+            convolve_overlap_save(
+                signal[1, :],
+                torch.flip(pilot_signal[0, :].conj().resolve_conj(), dims=(0,)),
+                "valid",
+            ),
+            convolve_overlap_save(
+                signal[0, :],
+                torch.flip(pilot_signal[1, :].conj().resolve_conj(), dims=(0,)),
+                "valid",
+            ),
+        ),
+        dim=0,
+    )
+    max_values, time_offsets = torch.max(torch.abs(cross_corr), dim=1, keepdim=True)
+    # Check if the two maximum values in regular polarization are flipped compare the sum of the maximum values
+
+    if max_values[0] + max_values[1] > max_values[2] + max_values[3]:
+        to = torch.minimum(time_offsets[0], time_offsets[1])
+        return signal[:, to:]
+    # Flip polarizations for better start
+    to = torch.minimum(time_offsets[2], time_offsets[3])
+    return signal[(1,0),to:]
