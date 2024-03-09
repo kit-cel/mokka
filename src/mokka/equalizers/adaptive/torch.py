@@ -72,7 +72,7 @@ class CMA(torch.nn.Module):
             equalizer_length - 1
         ) // 2  # We try to put the symbol of interest in the center tap of the equalizer
         for i, k in enumerate(
-            range(eq_offset, num_samp - 1 - eq_offset, self.sps * self.block_size)
+            range(eq_offset, num_samp - 1 - eq_offset*2, self.sps * self.block_size)
         ):
             if i % 20000 == 0 and i != 0:
                 lr = lr / 2.0
