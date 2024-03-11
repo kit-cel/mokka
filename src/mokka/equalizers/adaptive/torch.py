@@ -429,7 +429,7 @@ class VAE_LE_DP(torch.nn.Module):
     def update_var(self, new_lr):
         self.lr = new_lr
         for group in self.optimizer.param_groups:
-            group["lr"] = self.lr
+           group["lr"] = self.lr
 
 
 def update_ZF(y_hat_sym, pilot_seq, pilot_seq_up, _, idx, length, sps):
