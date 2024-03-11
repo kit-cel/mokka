@@ -48,9 +48,7 @@ class Butterfly2x2(torch.nn.Module):
     for equalization.
     """
 
-    def __init__(
-        self, taps=None, num_taps=None, trainable=False, timedomain=True, device="cpu"
-    ):
+    def __init__(self, taps=None, num_taps=None, trainable=False, timedomain=True):
         """
         Initialize Butterfly2x2 Filter.
 
@@ -64,9 +62,7 @@ class Butterfly2x2(torch.nn.Module):
         if taps is None:
             if num_taps is None:
                 raise ValueError("Either taps or num_taps must be set")
-            filter_taps = torch.zeros(
-                (4, num_taps), dtype=torch.complex64, device=device
-            )
+            filter_taps = torch.zeros((4, num_taps), dtype=torch.complex64)
             filter_taps[0, num_taps // 2] = 1.0
             filter_taps[2, num_taps // 2] = 1.0
             self.num_taps = num_taps
@@ -237,4 +233,4 @@ def correct_start_polarization(signal, pilot_signal):
         return signal[:, to:]
     # Flip polarizations for better start
     to = torch.minimum(time_offsets[2], time_offsets[3])
-    return signal[(1,0),to:]
+    return signal[(1, 0), to:]
