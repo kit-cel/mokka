@@ -3,6 +3,7 @@ PyTorch implementations of adaptive equalizers.
 
 """
 from ..torch import Butterfly2x2
+from ..torch import correct_start_polarization
 import torch
 
 
@@ -72,7 +73,7 @@ class CMA(torch.nn.Module):
             equalizer_length - 1
         ) // 2  # We try to put the symbol of interest in the center tap of the equalizer
         for i, k in enumerate(
-            range(eq_offset, num_samp - 1 - eq_offset*2, self.sps * self.block_size)
+            range(eq_offset, num_samp - 1 - eq_offset * 2, self.sps * self.block_size)
         ):
             if i % 20000 == 0 and i != 0:
                 lr = lr / 2.0
@@ -381,3 +382,128 @@ class VAE_LE_DP(torch.nn.Module):
         self.lr = new_lr
         for group in self.optimizer.param_groups:
            group["lr"] = self.lr
+
+
+def update_ZF(y_hat_sym, pilot_seq, pilot_seq_up, idx, length, sps):
+    idx_up = idx * sps
+    e_k = pilot_seq[idx] - y_hat_sym[idx]
+    result = e_k * torch.flip(
+        pilot_seq_up[idx_up : idx_up + length].conj().resolve_conj(), dims=(0,)
+    )
+    return result
+
+
+def update_LMS(y_hat_sym, pilot_seq, y_samp, idx, length, sps):
+    e_k = pilot_seq[idx] - y_hat_sym[idx]
+    idx_up = idx * sps
+    offset = ((length - 1) // 2) // sps
+
+    return e_k * torch.flip(
+        y_samp[idx_up : idx_up + length].conj().resolve_conj(), dims=(0,)
+    )
+
+
+class PilotAEQ(torch.nn.Module):
+    """
+    Perform pilot-based adaptive equalization (QPSK)
+    """
+
+    def __init__(
+        self,
+        sps,
+        lr,
+        pilot_sequence,
+        pilot_sequence_up,
+        butterfly_filter=None,
+        filter_length=31,
+        method="LMS",
+    ):
+        super(PilotAEQ, self).__init__()
+        self.register_buffer("sps", torch.as_tensor(sps))
+        self.register_buffer("lr", torch.as_tensor(lr))
+        self.register_buffer("pilot_sequence", torch.as_tensor(pilot_sequence))
+        self.register_buffer("pilot_sequence_up", torch.as_tensor(pilot_sequence_up))
+        if butterfly_filter is not None:
+            self.butterfly_filter = butterfly_filter
+            self.register_buffer(
+                "filter_length", torch.as_tensor(butterfly_filter.taps.shape[1])
+            )
+        else:
+            self.butterfly_filter = Butterfly2x2(num_taps=filter_length)
+            self.butterfly_filter.taps[0, filter_length // 2] = 1.0
+            self.butterfly_filter.taps[2, filter_length // 2] = 1.0
+            self.register_buffer("filter_length", torch.as_tensor(filter_length))
+        if method == "ZF":
+            self.update = update_LMS
+        else:
+            self.update = update_ZF
+
+    def reset(self):
+        self.butterfly_filter = Butterfly2x2(num_taps=self.filter_length.item())
+        self.butterfly_filter.taps[0, self.filter_length.item() // 2] = 1.0
+        self.butterfly_filter.taps[2, self.filter_length.item() // 2] = 1.0
+
+    def forward(self, y):
+        y_cut = correct_start_polarization(y, self.pilot_sequence_up)
+
+        equalizer_length = self.butterfly_filter.taps.size()[1]
+        eq_offset = ((equalizer_length - 1) // 2) // self.sps
+        num_samp = y_cut.shape[1]
+        u = torch.zeros(
+            (4, (num_samp - equalizer_length) // self.sps, equalizer_length),
+            dtype=torch.complex64,
+        )
+        lr = self.lr  # 1e-3
+        out = torch.zeros(
+            2, (num_samp - equalizer_length) // self.sps, dtype=torch.complex64
+        )
+        for i, k in enumerate(range(equalizer_length, num_samp - 1, self.sps)):
+            in_index = torch.arange(k - equalizer_length, k)
+            out_tmp = self.butterfly_filter(y_cut[:, in_index], "valid")
+            out[:, i] = out_tmp.squeeze()
+            # Out will contain samples starting with
+            # ((filter_length-1)//2)//sps
+            if i * self.sps + 2 * eq_offset < self.pilot_sequence.shape[1]:
+                #                u[0, i, :] = update_ZF(out[0,:], self.pilot_sequence[0,eq_offset:], self.pilot_sequence_up[0,:], i, equalizer_length, self.sps)
+                #                u[1, i, :] = update_ZF(out[0,:], self.pilot_sequence[0,eq_offset:], self.pilot_sequence_up[1,:], i, equalizer_length, self.sps)
+                #                u[2, i, :] = update_ZF(out[1,:], self.pilot_sequence[1,eq_offset:], self.pilot_sequence_up[1,:],i, equalizer_length, self.sps)
+                #                u[3, i, :] = update_ZF(out[1,:], self.pilot_sequence[1,eq_offset:], self.pilot_sequence_up[0,:],i, equalizer_length, self.sps)
+
+                u[0, i, :] = self.update(
+                    out[0, :],
+                    self.pilot_sequence[0, eq_offset:],
+                    y_cut[0, :],
+                    i,
+                    equalizer_length,
+                    self.sps,
+                )
+                u[1, i, :] = self.update(
+                    out[0, :],
+                    self.pilot_sequence[0, eq_offset:],
+                    y_cut[1, :],
+                    i,
+                    equalizer_length,
+                    self.sps,
+                )
+                u[2, i, :] = self.update(
+                    out[1, :],
+                    self.pilot_sequence[1, eq_offset:],
+                    y_cut[1, :],
+                    i,
+                    equalizer_length,
+                    self.sps,
+                )
+                u[3, i, :] = self.update(
+                    out[1, :],
+                    self.pilot_sequence[1, eq_offset:],
+                    y_cut[0, :],
+                    i,
+                    equalizer_length,
+                    self.sps,
+                )
+                self.butterfly_filter.taps = self.butterfly_filter.taps + (
+                    2 * lr * u[:, i, :].squeeze()
+                )
+        # Add some padding in the start
+        out = torch.cat((torch.zeros((2, 100), dtype=torch.complex64), out), dim=1)
+        return out

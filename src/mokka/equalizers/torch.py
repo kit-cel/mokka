@@ -201,7 +201,8 @@ class Butterfly4x4(torch.nn.Module):
 
 def correct_start_polarization(signal, pilot_signal):
     """
-    Correlate the signal with a known pilot_signal and
+    Correlate the signal with a known pilot_signal and return the signal
+    with the pilot_signal removed
     """
     cross_corr = torch.stack(
         (

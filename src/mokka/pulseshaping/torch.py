@@ -222,7 +222,7 @@ class PulseShaping(torch.nn.Module):
             ir /= torch.linalg.norm(ir)
             ir = ir.type(torch.complex64)
             if normalize_symbol:
-                ir /= torch.sqrt(torch.tensor(T_sample))
+                ir *= torch.sqrt(torch.tensor(T_sample))
         return cls(ir, learnable)
 
 
