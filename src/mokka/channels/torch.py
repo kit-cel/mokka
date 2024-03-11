@@ -1395,7 +1395,7 @@ class PMDElement(torch.nn.Module):
         num_steps = signal.shape[0]
         # Static case
         if self.sigma_p == 0.0:
-            return torch.matmul(self.J_k1.unsqueeze(0), signal).squeeze()
+            return torch.matmul(self.J_k1.unsqueeze(0), signal.unsqueeze(2)).squeeze()
         # Dynamic/time-varying case
         J_k = self.steps(num_steps)
         signal_out = torch.bmm(J_k, signal.unsqueeze(-1)).squeeze()
