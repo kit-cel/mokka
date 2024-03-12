@@ -330,6 +330,7 @@ class VAE_LE_DP(torch.nn.Module):
             )
         ):
             # if i % (20000//self.block_size) == 0 and i != 0:
+            # print("Updating learning rate")
             # self.update_lr(self.lr * 0.5)
             # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
@@ -389,6 +390,7 @@ class VAE_LE_DP(torch.nn.Module):
                 IQ_separate=self.IQ_separate,
             )
 
+            # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
             self.optimizer.step()
             # self.optimizer_var.step()
