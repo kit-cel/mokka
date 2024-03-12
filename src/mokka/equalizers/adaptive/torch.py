@@ -119,12 +119,20 @@ class CMA(torch.nn.Module):
         return self.out_e
 
 
-
 ##############################################################################################
 ########################### Variational Autoencoer based Equalizer ###########################
 ##############################################################################################
-    
-def ELBO_DP(y, q, sps, constellation_symbols, butterfly_filter, p_constellation=None, IQ_separate=False):
+
+
+def ELBO_DP(
+    y,
+    q,
+    sps,
+    constellation_symbols,
+    butterfly_filter,
+    p_constellation=None,
+    IQ_separate=False,
+):
     """
     Calculate dual-pol. ELBO loss for arbitrary complex constellations.
 
@@ -146,28 +154,54 @@ def ELBO_DP(y, q, sps, constellation_symbols, butterfly_filter, p_constellation=
         )
 
     # # Precompute E_Q{c} = sum( q * c) where c is x and |x|**2
-    E_Q_x = torch.zeros(2,N, device=q.device, dtype=torch.complex64)
-    E_Q_x_abssq = torch.zeros(2,N, device=q.device, dtype=torch.float32)
+    E_Q_x = torch.zeros(2, N, device=q.device, dtype=torch.complex64)
+    E_Q_x_abssq = torch.zeros(2, N, device=q.device, dtype=torch.float32)
     if IQ_separate == True:
         num_lev = constellation_symbols.shape[0]
-        E_Q_x[:,::sps] = torch.complex(
-                torch.sum(q[:,:,:num_lev] * constellation_symbols.unsqueeze(0).unsqueeze(0), dim=-1), 
-                torch.sum(q[:,:,num_lev:] * constellation_symbols.unsqueeze(0).unsqueeze(0), dim=-1)
-            )
-        E_Q_x_abssq[:,::sps] = torch.add( # Precompute E_Q{|x|^2}
-                torch.sum(q[:,:,:num_lev] * (constellation_symbols**2).unsqueeze(0).unsqueeze(0), dim=-1), 
-                torch.sum(q[:,:,num_lev:] * (constellation_symbols**2).unsqueeze(0).unsqueeze(0), dim=-1)
-            )
+        E_Q_x[:, ::sps] = torch.complex(
+            torch.sum(
+                q[:, :, :num_lev] * constellation_symbols.unsqueeze(0).unsqueeze(0),
+                dim=-1,
+            ),
+            torch.sum(
+                q[:, :, num_lev:] * constellation_symbols.unsqueeze(0).unsqueeze(0),
+                dim=-1,
+            ),
+        )
+        E_Q_x_abssq[:, ::sps] = torch.add(  # Precompute E_Q{|x|^2}
+            torch.sum(
+                q[:, :, :num_lev]
+                * (constellation_symbols**2).unsqueeze(0).unsqueeze(0),
+                dim=-1,
+            ),
+            torch.sum(
+                q[:, :, num_lev:]
+                * (constellation_symbols**2).unsqueeze(0).unsqueeze(0),
+                dim=-1,
+            ),
+        )
         p_constellation = p_constellation.repeat(2)
-    else: 
-        E_Q_x[:,::sps] = torch.sum( q * constellation_symbols.unsqueeze(0).unsqueeze(0), axis=-1 )
-        E_Q_x_abssq[:,::sps] = torch.sum( q * (constellation_symbols.real**2 + constellation_symbols.imag**2).unsqueeze(0).unsqueeze(0), axis=-1 )
+    else:
+        E_Q_x[:, ::sps] = torch.sum(
+            q * constellation_symbols.unsqueeze(0).unsqueeze(0), axis=-1
+        )
+        E_Q_x_abssq[:, ::sps] = torch.sum(
+            q
+            * (constellation_symbols.real**2 + constellation_symbols.imag**2)
+            .unsqueeze(0)
+            .unsqueeze(0),
+            axis=-1,
+        )
 
     # Term A - sum all the things, but spare the first dimension, since the two polarizations
     # are sorta independent
     bias = 1e-14
     A = torch.sum(
-        q[:,L_offset:-L_offset,:] * torch.log((q[:,L_offset:-L_offset,:] / p_constellation.unsqueeze(0).unsqueeze(0)) + bias),
+        q[:, L_offset:-L_offset, :]
+        * torch.log(
+            (q[:, L_offset:-L_offset, :] / p_constellation.unsqueeze(0).unsqueeze(0))
+            + bias
+        ),
         dim=(1, 2),
     )
 
@@ -196,7 +230,9 @@ def ELBO_DP(y, q, sps, constellation_symbols, butterfly_filter, p_constellation=
     var = C / (N - L + 1) * sps
     return loss, var
 
+
 ##############################################################################################
+
 
 class VAE_LE_DP(torch.nn.Module):
     """
@@ -214,7 +250,7 @@ class VAE_LE_DP(torch.nn.Module):
         requires_q=False,
         IQ_separate=False,
         var_from_estimate=False,
-        device='cpu'
+        device="cpu",
     ):
         super(VAE_LE_DP, self).__init__()
 
@@ -248,10 +284,16 @@ class VAE_LE_DP(torch.nn.Module):
     def reset(self):
         self.lr = self.start_lr.clone()
         self.butterfly_forward = Butterfly2x2(
-            num_taps=self.num_taps_forward.item(), trainable=True, timedomain=True, device=self.butterfly_forward.taps.device
+            num_taps=self.num_taps_forward.item(),
+            trainable=True,
+            timedomain=True,
+            device=self.butterfly_forward.taps.device,
         )
         self.butterfly_backward = Butterfly2x2(
-            num_taps=self.num_taps_backward.item(), trainable=True, timedomain=True, device=self.butterfly_forward.taps.device
+            num_taps=self.num_taps_backward.item(),
+            trainable=True,
+            timedomain=True,
+            device=self.butterfly_forward.taps.device,
         )
         self.optimizer = torch.optim.Adam(
             self.butterfly_forward.parameters(),
@@ -284,8 +326,8 @@ class VAE_LE_DP(torch.nn.Module):
             )
         ):
             # if i % (20000//self.block_size) == 0 and i != 0:
-                # print("Updating learning rate")
-                # self.update_lr(self.lr * 0.5)
+            # print("Updating learning rate")
+            # self.update_lr(self.lr * 0.5)
             # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
                 k - index_padding,
@@ -306,15 +348,18 @@ class VAE_LE_DP(torch.nn.Module):
                             (
                                 self.demapper(y_symb[0, :].real).unsqueeze(0),
                                 self.demapper(y_symb[0, :].imag).unsqueeze(0),
-                            ), axis=-1
+                            ),
+                            axis=-1,
                         ),
                         torch.cat(
                             (
                                 self.demapper(y_symb[1, :].real).unsqueeze(0),
                                 self.demapper(y_symb[1, :].imag).unsqueeze(0),
-                            ), axis=-1
+                            ),
+                            axis=-1,
                         ),
-                    ), axis=0
+                    ),
+                    axis=0,
                 )
             else:
                 q_hat = torch.cat(
@@ -331,26 +376,29 @@ class VAE_LE_DP(torch.nn.Module):
                 // 2 : -((self.butterfly_forward.num_taps - 1) // 2)
             ]
             loss, var = ELBO_DP(
-            #loss, var = ELBO_DP(
+                # loss, var = ELBO_DP(
                 y[:, y_index],
                 q_hat,
                 self.sps,
                 self.demapper.constellation,
                 self.butterfly_backward,
                 p_constellation=self.demapper.p_symbols,
-                IQ_separate=self.IQ_separate
+                IQ_separate=self.IQ_separate,
             )
-            
+
             # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
             self.optimizer.step()
-            #self.optimizer_var.step()
+            # self.optimizer_var.step()
             self.optimizer.zero_grad()
-            #self.optimizer_var.zero_grad()
-            
+            # self.optimizer_var.zero_grad()
+
             if self.var_from_estimate == True:
                 self.demapper.noise_sigma = torch.clamp(
-                    torch.mean(var.detach().clone()), min=torch.tensor(0.05, requires_grad=False, device=q_hat.device) , max=2*self.demapper.noise_sigma.detach().clone() #torch.sqrt(var).detach()), min=0.1
+                    torch.mean(var.detach().clone()),
+                    min=torch.tensor(0.05, requires_grad=False, device=q_hat.device),
+                    max=2
+                    * self.demapper.noise_sigma.detach().clone(),  # torch.sqrt(var).detach()), min=0.1
                 )
 
             output_symbols = y_symb[
@@ -360,13 +408,9 @@ class VAE_LE_DP(torch.nn.Module):
             out.append(
                 output_symbols
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
-            
-            output_q = q_hat[
-                :, : self.block_size, :
-            ]
-            out_q.append(
-                output_q
-            )
+
+            output_q = q_hat[:, : self.block_size, :]
+            out_q.append(output_q)
         # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
         if self.requires_q == True:
             return torch.cat(out, axis=1), torch.cat(out_q, axis=1)
@@ -376,12 +420,12 @@ class VAE_LE_DP(torch.nn.Module):
     def update_lr(self, new_lr):
         self.lr = new_lr
         for group in self.optimizer.param_groups:
-           group["lr"] = self.lr
+            group["lr"] = self.lr
 
     def update_var(self, new_lr):
         self.lr = new_lr
         for group in self.optimizer.param_groups:
-           group["lr"] = self.lr
+            group["lr"] = self.lr
 
 
 def update_ZF(y_hat_sym, pilot_seq, pilot_seq_up, idx, length, sps):
