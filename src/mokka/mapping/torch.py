@@ -630,7 +630,7 @@ class ClassicalDemapper(torch.nn.Module):
                 / (2 * torch.clip(self.noise_sigma.to(device=y.device), 0.001) ** 2)
             )
             * self.p_symbols[None, :].to(device=y.device)
-            * (2**self.m.to(device=y.device))
+            * (2 ** self.m.to(device=y.device))
         )  # batch_size x 2**m
 
         if self.bitwise:
