@@ -195,10 +195,20 @@ class Butterfly4x4(torch.nn.Module):
             )
 
 
-def correct_start_polarization(signal, pilot_signal):
+def correct_start_polarization(signal, pilot_signal, correct_static_phase=False):
     """
-    Correlate the signal with a known pilot_signal and return the signal
-    with the pilot_signal removed
+    Correlate the signal with a known pilot_signal.
+
+    Return the signal aligned with the first sample of the pilot_signal.
+    This method correlates both polarization with the pilot_signal to check
+    for flipped polarization, e.g. after an equalizers.
+
+    :param signal: Dual polarization complex input signal
+    :param pilot_signal: Dual polarization complex pilot signal to search for
+    :param correct_static_phase: Estimate phase shift from maximum correlation value
+                                 and apply phase correction to the returned aligned
+                                 signal
+    :returns: Signal aligned with the first element in the pilot_signal
     """
     cross_corr = torch.stack(
         (
@@ -229,8 +239,24 @@ def correct_start_polarization(signal, pilot_signal):
     # Check if the two maximum values in regular polarization are flipped compare the sum of the maximum values
 
     if max_values[0] + max_values[1] > max_values[2] + max_values[3]:
+        if correct_static_phase:
+            static_phase_shift = torch.angle(
+                torch.gather(
+                    cross_corr[(0, 1), :], dim=1, index=time_offsets[(0, 1), :]
+                )
+            )
         to = torch.minimum(time_offsets[0], time_offsets[1])
-        return signal[:, to:]
-    # Flip polarizations for better start
-    to = torch.minimum(time_offsets[2], time_offsets[3])
-    return signal[(1, 0), to:]
+        aligned_signal = signal[:, to:]
+    else:
+        # Flip polarizations
+        if correct_static_phase:
+            static_phase_shift = torch.angle(
+                torch.gather(
+                    cross_corr[(3, 2), :], dim=1, index=time_offsets[(3, 2), :]
+                )
+            )
+            to = torch.minimum(time_offsets[2], time_offsets[3])
+            aligned_signal = signal[(1, 0), to:]
+    if correct_static_phase:
+        aligned_signal = aligned_signal * torch.exp(-1j * static_phase_shift)
+    return aligned_signal
