@@ -32,5 +32,11 @@ This package provides a range of modules, covering a range of functions within a
 To access functionality within a specific module first `import mokka` and then access of modules is possible, e.g. `mokka.mapping.torch` provides
 constellation mappers and demappers implemented with and compatible to the PyTorch framework.
 
+## Development
+
+In order to allow for consistent development we use pre-commit to check formatting and documentation of source code before creating commits. To install required tools for development specify option `[dev]` during installation of mokka. E.g. if you are installing in editable mode from the git root of this repository you can run `pip install ".[torch,dev]"` to install dependencies for running mokka with torch and development tools.
+
+To install the required pre-commit hooks you run `pre-commit install` from the git root, this will use the `.pre-commit.yml` file in the root to install hooks required to check formatting and documentation of newly commited source code.
+
 ## Acknowledgment
 This  work  has  received  funding  from  the  European  Research Council (ERC) under the European Union's Horizon2020 research and innovation programme (grant agreement No. 101001899).
