@@ -258,6 +258,7 @@ def ELBO_DP(
     return loss, var
 
 
+
 class VAE_LE_DP(torch.nn.Module):
     """
     Adaptive Equalizer based on the variational autoencoder principle with a linear equalizer.
