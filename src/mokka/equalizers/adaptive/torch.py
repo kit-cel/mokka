@@ -236,7 +236,12 @@ def ELBO_DP(
 
 class VAE_LE_DP(torch.nn.Module):
     """
-    Class that can be dropped in to perform equalization
+    Adaptive Equalizer based on the variational autoencoder principle with a linear equalizer.
+
+    This code is based on the work presented in [1].
+
+    [1] V. Lauinger, F. Buchali, and L. Schmalen, ‘Blind equalization and channel estimation in coherent optical communications using variational autoencoders’, IEEE Journal on Selected Areas in Communications, vol. 40, no. 9, pp. 2529–2539, Sep. 2022, doi: 10.1109/JSAC.2022.3191346.
+
     """
 
     def __init__(
@@ -250,7 +255,6 @@ class VAE_LE_DP(torch.nn.Module):
         requires_q=False,
         IQ_separate=False,
         var_from_estimate=False,
-        device="cpu",
     ):
         super(VAE_LE_DP, self).__init__()
 
@@ -264,10 +268,10 @@ class VAE_LE_DP(torch.nn.Module):
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.register_buffer("var_from_estimate", torch.as_tensor(var_from_estimate))
         self.butterfly_forward = Butterfly2x2(
-            num_taps=num_taps_forward, trainable=True, timedomain=True, device=device
+            num_taps=num_taps_forward, trainable=True, timedomain=True
         )
         self.butterfly_backward = Butterfly2x2(
-            num_taps=num_taps_backward, trainable=True, timedomain=True, device=device
+            num_taps=num_taps_backward, trainable=True, timedomain=True
         )
         self.demapper = demapper
         self.optimizer = torch.optim.Adam(
@@ -287,20 +291,19 @@ class VAE_LE_DP(torch.nn.Module):
             num_taps=self.num_taps_forward.item(),
             trainable=True,
             timedomain=True,
-            device=self.butterfly_forward.taps.device,
-        )
+        ).to(self.butterfly_forward.taps.device)
         self.butterfly_backward = Butterfly2x2(
             num_taps=self.num_taps_backward.item(),
             trainable=True,
             timedomain=True,
-            device=self.butterfly_forward.taps.device,
-        )
+        ).to(self.butterfly_forward.taps.device)
         self.optimizer = torch.optim.Adam(
             self.butterfly_forward.parameters(),
             lr=self.lr,
         )
         self.optimizer.add_param_group({"params": self.butterfly_backward.parameters()})
 
+    @torch.enable_grad()
     def forward(self, y):
         # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
