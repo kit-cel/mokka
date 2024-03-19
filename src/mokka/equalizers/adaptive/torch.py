@@ -4,6 +4,7 @@ PyTorch implementations of adaptive equalizers.
 """
 from ..torch import Butterfly2x2
 from ..torch import correct_start_polarization
+from ...functional.torch import convolve_overlap_save
 import torch
 
 
@@ -329,7 +330,6 @@ class VAE_LE_DP(torch.nn.Module):
             )
         ):
             # if i % (20000//self.block_size) == 0 and i != 0:
-            # print("Updating learning rate")
             # self.update_lr(self.lr * 0.5)
             # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
@@ -389,7 +389,6 @@ class VAE_LE_DP(torch.nn.Module):
                 IQ_separate=self.IQ_separate,
             )
 
-            # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
             self.optimizer.step()
             # self.optimizer_var.step()
@@ -431,7 +430,7 @@ class VAE_LE_DP(torch.nn.Module):
             group["lr"] = self.lr
 
 
-def update_ZF(y_hat_sym, pilot_seq, pilot_seq_up, idx, length, sps):
+def update_ZF(y_hat_sym, pilot_seq, pilot_seq_up, y_samp, idx, length, sps):
     idx_up = idx * sps
     e_k = pilot_seq[idx] - y_hat_sym[idx]
     result = e_k * torch.flip(
@@ -440,17 +439,16 @@ def update_ZF(y_hat_sym, pilot_seq, pilot_seq_up, idx, length, sps):
     return result
 
 
-def update_LMS(y_hat_sym, pilot_seq, y_samp, idx, length, sps):
+def update_LMS(y_hat_sym, pilot_seq, pilot_seq_up, y_samp, idx, length, sps):
     e_k = pilot_seq[idx] - y_hat_sym[idx]
     idx_up = idx * sps
-    offset = ((length - 1) // 2) // sps
 
     return e_k * torch.flip(
         y_samp[idx_up : idx_up + length].conj().resolve_conj(), dims=(0,)
     )
 
 
-class PilotAEQ(torch.nn.Module):
+class PilotAEQ_DP(torch.nn.Module):
     """
     Perform pilot-based adaptive equalization (QPSK)
     """
@@ -511,14 +509,10 @@ class PilotAEQ(torch.nn.Module):
             # Out will contain samples starting with
             # ((filter_length-1)//2)//sps
             if i * self.sps + 2 * eq_offset < self.pilot_sequence.shape[1]:
-                #                u[0, i, :] = update_ZF(out[0,:], self.pilot_sequence[0,eq_offset:], self.pilot_sequence_up[0,:], i, equalizer_length, self.sps)
-                #                u[1, i, :] = update_ZF(out[0,:], self.pilot_sequence[0,eq_offset:], self.pilot_sequence_up[1,:], i, equalizer_length, self.sps)
-                #                u[2, i, :] = update_ZF(out[1,:], self.pilot_sequence[1,eq_offset:], self.pilot_sequence_up[1,:],i, equalizer_length, self.sps)
-                #                u[3, i, :] = update_ZF(out[1,:], self.pilot_sequence[1,eq_offset:], self.pilot_sequence_up[0,:],i, equalizer_length, self.sps)
-
                 u[0, i, :] = self.update(
                     out[0, :],
                     self.pilot_sequence[0, eq_offset:],
+                    self.pilot_sequence_up[0, :],
                     y_cut[0, :],
                     i,
                     equalizer_length,
@@ -527,6 +521,7 @@ class PilotAEQ(torch.nn.Module):
                 u[1, i, :] = self.update(
                     out[0, :],
                     self.pilot_sequence[0, eq_offset:],
+                    self.pilot_sequence_up[1, :],
                     y_cut[1, :],
                     i,
                     equalizer_length,
@@ -535,6 +530,7 @@ class PilotAEQ(torch.nn.Module):
                 u[2, i, :] = self.update(
                     out[1, :],
                     self.pilot_sequence[1, eq_offset:],
+                    self.pilot_sequence_up[1, :],
                     y_cut[1, :],
                     i,
                     equalizer_length,
@@ -543,6 +539,7 @@ class PilotAEQ(torch.nn.Module):
                 u[3, i, :] = self.update(
                     out[1, :],
                     self.pilot_sequence[1, eq_offset:],
+                    self.pilot_sequence_up[0, :],
                     y_cut[0, :],
                     i,
                     equalizer_length,
@@ -554,3 +551,146 @@ class PilotAEQ(torch.nn.Module):
         # Add some padding in the start
         out = torch.cat((torch.zeros((2, 100), dtype=torch.complex64), out), dim=1)
         return out
+
+
+class PilotAEQ_SP(torch.nn.Module):
+    """
+    Perform pilot-based adaptive equalization (QPSK)
+    """
+
+    def __init__(
+        self,
+        sps,
+        lr,
+        pilot_sequence,
+        pilot_sequence_up,
+        filter_length=31,
+        method="LMS",
+    ):
+        super(PilotAEQ_SP, self).__init__()
+        self.register_buffer("sps", torch.as_tensor(sps))
+        self.register_buffer("lr", torch.as_tensor(lr))
+        self.register_buffer("pilot_sequence", torch.as_tensor(pilot_sequence))
+        self.register_buffer("pilot_sequence_up", torch.as_tensor(pilot_sequence_up))
+        self.register_buffer(
+            "taps", torch.zeros((filter_length,), dtype=torch.complex64)
+        )
+        self.taps[filter_length // 2] = 1.0
+        if method == "ZF":
+            self.update = update_LMS
+        else:
+            self.update = update_ZF
+
+    def reset(self):
+        self.taps.zero_()
+        self.taps[self.taps.size()[0] // 2] = 1.0
+
+    def forward(self, y):
+        y_cut = correct_start_polarization(y, self.pilot_sequence_up)
+
+        equalizer_length = self.taps.size()[0]
+        eq_offset = ((equalizer_length - 1) // 2) // self.sps
+        num_samp = y_cut.shape[1]
+        u = torch.zeros(
+            ((num_samp - equalizer_length) // self.sps, equalizer_length),
+            dtype=torch.complex64,
+        )
+        lr = self.lr  # 1e-3
+        out = torch.zeros(
+            (num_samp - equalizer_length) // self.sps, dtype=torch.complex64
+        )
+        for i, k in enumerate(range(equalizer_length, num_samp - 1, self.sps)):
+            in_index = torch.arange(k - equalizer_length, k)
+            out_tmp = convolve_overlap_save(y_cut[:, in_index], self.taps, "valid")
+            out[:, i] = out_tmp.squeeze()
+            # Out will contain samples starting with
+            # ((filter_length-1)//2)//sps
+            if i * self.sps + 2 * eq_offset < self.pilot_sequence.shape[1]:
+                u[i, :] = self.update(
+                    out[0, :],
+                    self.pilot_sequence[0, eq_offset:],
+                    self.pilot_sequence_up[0, :],
+                    y_cut[0, :],
+                    i,
+                    equalizer_length,
+                    self.sps,
+                )
+            self.taps = self.taps + (2 * lr * u[i, :].squeeze())
+        # Add some padding in the start
+        out = torch.cat((torch.zeros((2, 100), dtype=torch.complex64), out), dim=1)
+        return out
+
+
+class AEQ_SP(torch.nn.Module):
+    """
+    Perform CMA equalization
+    """
+
+    taps: torch.Tensor
+
+    def __init__(
+        self,
+        R,
+        sps,
+        lr,
+        taps=None,
+        filter_length=31,
+        block_size=1,
+        no_singularity=False,
+    ):
+        super(AEQ_SP, self).__init__()
+        self.register_buffer("R", torch.as_tensor(R))
+        self.register_buffer("sps", torch.as_tensor(sps))
+        self.register_buffer("lr", torch.as_tensor(lr))
+        self.register_buffer("block_size", torch.as_tensor(block_size))
+        self.register_buffer(
+            "taps",
+            torch.zeros(
+                filter_length,
+                dtype=torch.complex64,
+            ),
+        )
+        self.taps[self.taps.shape[0] // 2] = 1.0
+        # Do some clever initalization, first only equalize x-pol and then enable y-pol
+
+    def reset(self):
+        self.taps.zero_()
+        self.taps[self.taps.shape[0] // 2] = 1.0
+
+    def forward(self, y):
+        # Implement CMA "by hand"
+        # Basically step through the signal advancing always +sps symbols
+        # and filtering 2*filter_len samples which will give one output sample with mode "valid"
+
+        equalizer_length = self.taps.shape[0]
+        num_samp = y.shape[0]
+        e = torch.zeros(
+            ((num_samp - equalizer_length) // self.sps), dtype=torch.float32
+        )
+        # logger.debug("CMA loop num: %s", reset_number)
+        R = self.R  # 1.0
+        lr = self.lr  # 1e-3
+        out = torch.zeros(
+            (num_samp - equalizer_length) // self.sps, dtype=torch.complex64
+        )
+        eq_offset = (
+            equalizer_length - 1
+        ) // 2  # We try to put the symbol of interest in the center tap of the equalizer
+        for i, k in enumerate(
+            range(eq_offset, num_samp - 1 - eq_offset * 2, self.sps * self.block_size)
+        ):
+            if i % 20000 == 0 and i != 0:
+                lr = lr / 2.0
+            in_index = torch.arange(k - equalizer_length, k)
+            out_tmp = convolve_overlap_save(y[in_index], self.taps, "valid")
+            out[i] = out_tmp.squeeze()
+            e[i] = R - torch.pow(torch.abs(out[i]), 2)
+            self.taps = self.taps + 2 * lr * torch.flip(
+                e[i] * out[i] * y[in_index].conj().resolve_conj(),  # hxx <- e_x x_0 x*
+                dims=(0,),
+            )
+        self.out_e = e.detach().clone()
+        return out
+
+    def get_error_signal(self):
+        return self.out_e

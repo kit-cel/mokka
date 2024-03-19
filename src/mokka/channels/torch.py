@@ -1,7 +1,7 @@
 """Channels sub-module implemented within the PyTorch framework."""
 import torch
 
-# import torchaudio
+import torchaudio
 import math
 import scipy.special
 import numpy as np
@@ -12,6 +12,9 @@ from torch import Tensor
 from .. import utils
 from .. import functional
 from ..pulseshaping.torch import upsample, downsample, brickwall_filter
+from ..functional.torch import convolve_overlap_save
+
+convolve = convolve_overlap_save
 
 logger = logging.getLogger(__name__)
 
@@ -774,6 +777,7 @@ class SSFMPropagationDualPol(torch.nn.Module):
     pmd_simulation: Bool = False
     pmd_sigma: Float[Tensor, "1"] = torch.tensor(0.0)
     pmd_correlation_length: Float[Tensor, "1"] = torch.tensor(0.1)
+    pmd_parameter: Float[Tensor, "1"] = torch.tensor(0.0)
 
     def __attrs_pre_init__(self):
         """Pre-init for attrs classes."""
@@ -849,8 +853,14 @@ class SSFMPropagationDualPol(torch.nn.Module):
             )
             + 1
         )
+        steps_per_span = self.length_span // self.dz
         self.pmd_elements = [
-            [PMDElement(self.pmd_sigma) for _ in range(num_pmd_elements)]
+            [
+                PMDElement(
+                    self.pmd_sigma, self.pmd_parameter, self.length_span, steps_per_span
+                )
+                for _ in range(num_pmd_elements)
+            ]
             for _ in range(self.num_span)
         ]
 
@@ -916,22 +926,16 @@ class SSFMPropagationDualPol(torch.nn.Module):
             nonlinear_operator,
         )
 
-    def forward(self, ux, uy):
+    def calculate_basis(self, w):
         """
-        Compute the progpagation for the dual polarization signal through the \
-        fiber optical channel.
+        Calculate basis functions for linear step.
 
-        :param ux: input signal in x-polarization.
-        :param uy: input signal in y-polarization.
-        :returns: signal at the end of the fiber
+        If any of the parameters alpha or beta change, this function needs to be
+        executed again to recalculate parameters
         """
-        w = (2 * torch.pi * torch.fft.fftfreq(ux.shape[0], self.dt * 1e12)).to(
-            self.betapa.device
-        )  # THz
-
+        wc = w.clone()
         self.ha_basis = -self.alphaa_lin / 2 - self.betapa[0]
         self.hb_basis = -self.alphab_lin / 2 - self.betapb[0]
-        wc = w.clone()
         for i in range(1, self.betapa.shape[0]):
             self.ha_basis = (
                 self.ha_basis - (1j * self.betapa[i] / math.factorial(i)) * wc
@@ -941,6 +945,20 @@ class SSFMPropagationDualPol(torch.nn.Module):
             )
             wc = wc * w
 
+    def forward(self, ux, uy):
+        """
+        Compute the progpagation for the dual polarization signal through the \
+        fiber optical channel.
+
+        :param ux: input signal in x-polarization.
+        :param uy: input signal in y-polarization.
+        :returns: signal at the end of the fiber
+        """
+
+        w = (2 * torch.pi * torch.fft.fftfreq(ux.shape[0], self.dt * 1e12)).to(
+            self.betapa.device
+        )  # THz
+        self.calculate_basis(w)
         u1 = self.TM11 * ux + self.TM12 * uy
         u2 = self.TM21 * ux + self.TM22 * uy
         # For EDFA apply amplification at the end of each span
@@ -1005,6 +1023,22 @@ class SSFMPropagationDualPol(torch.nn.Module):
                             * self.pmd_correlation_length
                             - z
                         ) / 2
+                if self.pmd_simulation and (
+                    torch.remainder(z, self.pmd_correlation_length) < 1e-3
+                    or self.pmd_correlation_length
+                    - torch.remainder(z, self.pmd_correlation_length)
+                    < 1e-3
+                ):
+                    pmd_index = int(torch.round(z / self.pmd_correlation_length).item())
+                    logger.debug("pmd index: %s", pmd_index)
+                    pmd_element = self.pmd_elements[span][pmd_index]
+                    # Calculate beta1 for both polarizations to simulate DGD for this segment
+                    # Simulate DGD by retarding pola and advancing polb
+                    dgd_dz = pmd_element.DGD_sec * 2 * dz / self.pmd_correlation_length
+                    self.betapa[1] = -dgd_dz / 2.0
+                    self.betapb[1] = dgd_dz / 2.0
+                    self.calculate_basis(w)
+
                 logger.debug("new_dz: %s km", new_dz)
                 # Calculate new operators for length new_dz and length 2*new_dz
                 if new_dz != dz:
@@ -1080,8 +1114,6 @@ class SSFMPropagationDualPol(torch.nn.Module):
                         u1 = u1f
                         u2 = u2f
 
-                    z = z + 2 * dz
-
                     if self.pmd_simulation and (
                         torch.remainder(z, self.pmd_correlation_length) < 1e-3
                         or self.pmd_correlation_length
@@ -1094,10 +1126,12 @@ class SSFMPropagationDualPol(torch.nn.Module):
                         logger.debug("pmd index: %s", pmd_index)
                         pmd_element = self.pmd_elements[span][pmd_index]
                         u1, u2 = torch.unbind(
-                            pmd_element(torch.stack((u1, u2), dim=1)), dim=1
+                            pmd_element(torch.stack((u1, u2), dim=0)), dim=0
                         )
                     if self.amp is not None and self.amp.amp_type == "Raman":
                         u1, u2 = self.amp(u1, u2, 2 * dz)  # TODO Where to add noise?
+
+                    z = z + 2 * dz
 
                     if iter >= self.maxiter:
                         logger.info(
@@ -1327,7 +1361,7 @@ class PMDElement(torch.nn.Module):
     Note: for SSFM only static PMD is correct
     """
 
-    def __init__(self, sigma_p):
+    def __init__(self, sigma_p, pmd_parameter, span_length, steps_per_span):
         super(PMDElement, self).__init__()
         # Apply PMD using matrix J_k which can be calculated from J(\alpha_k)
         # Pauli spin matrices
@@ -1346,6 +1380,14 @@ class PMDElement(torch.nn.Module):
         self.alpha = (alpha0[1:] / torch.sin(theta)) * theta
         # self.alpha = (g[1:] / torch.linalg.vector_norm(g[1:])) * theta
         self.theta0 = theta
+        self.J_k1 = self.J.clone()
+
+        # Also calculate DGD
+        self.pmd_parameter = pmd_parameter
+        mean_DGD = self.pmd_parameter * torch.sqrt(torch.as_tensor(span_length))
+        DGD_sec_mean = mean_DGD / (0.9213 * torch.sqrt(torch.as_tensor(steps_per_span)))
+        DGD_sec_std = DGD_sec_mean / 5.0
+        self.DGD_sec = DGD_sec_mean + DGD_sec_std * torch.zeros((1,)).normal_()
 
     @property
     def a(self):
@@ -1366,11 +1408,15 @@ class PMDElement(torch.nn.Module):
         )
 
     def step(self):
+        if self.sigma_p == 0.0:
+            return self.J_k1
         self.alpha = torch.zeros((3,), dtype=torch.float32).normal_() * self.sigma_p
         self.J_k1 = self.J
         return self.J_k1
 
     def steps(self, k=1):
+        if self.sigma_p == 0.0:
+            return self.J_k1.expand(k, -1, -1)
         alphas = torch.zeros((k, 3), dtype=torch.float32).normal_() * self.sigma_p
         thetas = torch.linalg.vector_norm(alphas, dim=1)
         a_s = alphas / thetas[:, None]
@@ -1379,6 +1425,7 @@ class PMDElement(torch.nn.Module):
         ] - 1j * torch.sum(a_s[:, :, None, None] * self.sigma[None, :], 1) * torch.sin(
             thetas[:, None, None]
         )
+        print(J_delta)
         results = [torch.matmul(J_delta[0, :, :], self.J_k1)]
         for J_d in J_delta[1:]:
             results.append(torch.matmul(J_d, results[-1]))
@@ -1395,8 +1442,78 @@ class PMDElement(torch.nn.Module):
         num_steps = signal.shape[0]
         # Static case
         if self.sigma_p == 0.0:
-            return torch.matmul(self.J_k1.unsqueeze(0), signal.unsqueeze(2)).squeeze()
+            return torch.matmul(self.J_k1, signal)
         # Dynamic/time-varying case
         J_k = self.steps(num_steps)
         signal_out = torch.bmm(J_k, signal.unsqueeze(-1)).squeeze()
         return signal_out
+
+
+class FixedChannelDP(torch.nn.Module):
+    """
+    Apply a fixed channel impulse response on both polarization separately
+    """
+
+    def __init__(self, impulse_response):
+        super(FixedChannelDP, self).__init__()
+
+        self.impulse_response = torch.as_tensor(impulse_response)
+
+    def forward(self, tx_signal):
+        return torch.cat(
+            (
+                convolve(tx_signal[0, :], self.impulse_response, mode="full").unsqueeze(
+                    0
+                ),
+                convolve(tx_signal[1, :], self.impulse_response, mode="full").unsqueeze(
+                    0
+                ),
+            ),
+            dim=0,
+        )
+
+
+class FixedChannelSP(torch.nn.Module):
+    """
+    Apply a fixed channel impulse response for a single polarization
+    """
+
+    def __init__(self, impulse_response):
+        super(FixedChannelSP, self).__init__()
+        self.impulse_response = torch.as_tensor(impulse_response)
+
+    def forward(self, tx_signal):
+        return convolve(tx_signal, self.impulse_response, mode="full")
+
+
+def ProakisChannel(variant, sps=1):
+    if variant == "a":
+        h = torch.tensor(
+            [0.04, -0.05, 0.07, -0.21, -0.5, 0.72, 0.36, 0.0, 0.21, 0.03, 0.07],
+            dtype=torch.complex64,
+        )
+    elif variant == "b":
+        h = torch.tensor([0.407, 0.815, 0.407], dtype=torch.complex64)
+
+    elif variant == "c":
+        h = torch.tensor([0.227, 0.46, 0.688, 0.46, 0.227], dtype=torch.complex64)
+
+    elif variant == "a_complex":
+        h = torch.tensor(
+            [
+                0.0545 + 1j * 0.05,
+                0.2823 - 1j * 0.11971,
+                -0.7676 + 1j * 0.2788,
+                -0.0641 - 1j * 0.0576,
+                0.0466 - 1j * 0.02275,
+            ],
+            dtype=torch.complex64,
+        )
+    else:
+        raise ValueError("Proakis Channel variant is either a, a_complex, b, or c")
+    oversample = sps - 1
+    if oversample == 0:
+        return h
+    h = torch.nn.functional.pad(h.unsqueeze(1), (0, oversample))
+    h = h.flatten()
+    return h

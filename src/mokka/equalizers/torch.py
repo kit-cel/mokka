@@ -258,5 +258,39 @@ def correct_start_polarization(signal, pilot_signal, correct_static_phase=False)
             to = torch.minimum(time_offsets[2], time_offsets[3])
             aligned_signal = signal[(1, 0), to:]
     if correct_static_phase:
-        aligned_signal = aligned_signal * torch.exp(-1j * static_phase_shift)
+        aligned_signal = aligned_signal * torch.exp(
+            torch.tensor(-1j) * static_phase_shift
+        )
+    return aligned_signal
+
+
+def correct_start(signal, pilot_signal, correct_static_phase=False):
+    """
+    Correlate the signal with a known pilot_signal.
+
+    Return the signal aligned with the first sample of the pilot_signal.
+    Optionally correct static_phase_offset using the maximum of the correlation
+
+    :param signal: Single polarization complex input signal
+    :param pilot_signal: Single polarization complex pilot signal to search for
+    :param correct_static_phase: Estimate phase shift from maximum correlation value
+                                 and apply phase correction to the returned aligned
+                                 signal
+    :returns: Signal aligned with the first element in the pilot_signal
+    """
+    cross_corr = convolve_overlap_save(
+        signal,
+        torch.flip(pilot_signal[:].conj().resolve_conj(), dims=(0,)),
+        "valid",
+    )
+    max_value, time_offset = torch.max(torch.abs(cross_corr), dim=0, keepdim=True)
+    # Check if the two maximum values in regular polarization are flipped compare the sum of the maximum values
+
+    if correct_static_phase:
+        static_phase_shift = torch.angle(max_value)
+    aligned_signal = signal[time_offset:]
+    if correct_static_phase:
+        aligned_signal = aligned_signal * torch.exp(
+            torch.tensor(-1j) * static_phase_shift
+        )
     return aligned_signal
