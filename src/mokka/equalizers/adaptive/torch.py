@@ -78,7 +78,7 @@ class CMA(torch.nn.Module):
         ):
             if i % 20000 == 0 and i != 0:
                 lr = lr / 2.0
-            if i == 10000 and self.no_singularity:
+            if i == 3000 and self.no_singularity:
                 self.butterfly_filter.taps[3, :] = -1 * torch.flip(
                     self.butterfly_filter.taps[1, :].conj().resolve_conj(), dims=(0,)
                 )
@@ -430,16 +430,17 @@ class VAE_LE_DP(torch.nn.Module):
             group["lr"] = self.lr
 
 
-def update_ZF(y_hat_sym, pilot_seq, pilot_seq_up, y_samp, idx, length, sps):
-    idx_up = idx * sps
+def update_ZF(y_hat_sym, pilot_seq, pilot_seq_up, _, idx, length, sps):
     e_k = pilot_seq[idx] - y_hat_sym[idx]
+    idx_up = idx * sps
+
     result = e_k * torch.flip(
         pilot_seq_up[idx_up : idx_up + length].conj().resolve_conj(), dims=(0,)
     )
     return result
 
 
-def update_LMS(y_hat_sym, pilot_seq, pilot_seq_up, y_samp, idx, length, sps):
+def update_LMS(y_hat_sym, pilot_seq, _, y_samp, idx, length, sps):
     e_k = pilot_seq[idx] - y_hat_sym[idx]
     idx_up = idx * sps
 
@@ -463,7 +464,7 @@ class PilotAEQ_DP(torch.nn.Module):
         filter_length=31,
         method="LMS",
     ):
-        super(PilotAEQ, self).__init__()
+        super(PilotAEQ_DP, self).__init__()
         self.register_buffer("sps", torch.as_tensor(sps))
         self.register_buffer("lr", torch.as_tensor(lr))
         self.register_buffer("pilot_sequence", torch.as_tensor(pilot_sequence))
@@ -478,10 +479,13 @@ class PilotAEQ_DP(torch.nn.Module):
             self.butterfly_filter.taps[0, filter_length // 2] = 1.0
             self.butterfly_filter.taps[2, filter_length // 2] = 1.0
             self.register_buffer("filter_length", torch.as_tensor(filter_length))
-        if method == "ZF":
+        self.method = method
+        if method == "LMS":
             self.update = update_LMS
-        else:
+        elif method == "ZF":
             self.update = update_ZF
+        elif method == "LMS_ZF":
+            self.update = update_LMS
 
     def reset(self):
         self.butterfly_filter = Butterfly2x2(num_taps=self.filter_length.item())
@@ -509,6 +513,8 @@ class PilotAEQ_DP(torch.nn.Module):
             # Out will contain samples starting with
             # ((filter_length-1)//2)//sps
             if i * self.sps + 2 * eq_offset < self.pilot_sequence.shape[1]:
+                if i == 3000 and self.method == "LMS_ZF":
+                    self.update = update_ZF
                 u[0, i, :] = self.update(
                     out[0, :],
                     self.pilot_sequence[0, eq_offset:],
