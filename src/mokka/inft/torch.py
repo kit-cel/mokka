@@ -60,14 +60,14 @@ def MI(M, PX, N, symbol_idx, Q_YX):
     ----------
     M           : int
         number of symbols
-    N           : int
-        number of sent/received symbols
-    Q_YX        : 2D-matrix_like
-        N x M conditonal probabilities
     PX        : 2D-matrix_like
         1 x M
+    N           : int
+        number of sent/received symbols
     symbol_idx  : 1D-matrix_like
         sent symbol indices
+    Q_YX        : 2D-matrix_like
+        N x M conditonal probabilities
 
     Returns
     -------
@@ -76,7 +76,7 @@ def MI(M, PX, N, symbol_idx, Q_YX):
     """
     MI = torch.mean(
         torch.log2(
-            Q_YX[torch.arange(0, N, device=Q_YX.device), symbol_idx]
+            Q_YX[torch.arange(0, N, device=Q_YX.device), symbol_idx.long()]
             / torch.sum(Q_YX * PX, 1)
         ),
         0,
