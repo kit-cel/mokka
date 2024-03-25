@@ -47,3 +47,14 @@ def idx2bits(idxs, num_bits_per_symbol):
         2,
     )
     return bits
+
+
+def onehot_to_idx(onehot):
+    """
+    Convert a one-hot vector to the corresponding index.
+
+    :params onehot: Input one-hot vectors
+    :returns: tensor of indices
+    """
+    idxs = torch.arange(onehot.size()[1]).unsqueeze(0)
+    return torch.sum(idxs * onehot, axis=1)
