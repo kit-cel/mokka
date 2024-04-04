@@ -33,4 +33,4 @@ To access functionality within a specific module first `import mokka` and then a
 constellation mappers and demappers implemented with and compatible to the PyTorch framework.
 
 ## Acknowledgment
-This  work  has  received  funding  from  the  European  Re-search Council (ERC) under the European Union's Horizon2020 research and innovation programme (grant agreement No. 101001899).
+This  work  has  received  funding  from  the  European  Research Council (ERC) under the European Union's Horizon2020 research and innovation programme (grant agreement No. 101001899).
