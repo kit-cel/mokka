@@ -24,6 +24,7 @@ class CMA(torch.nn.Module):
         filter_length=31,
         block_size=1,
         no_singularity=False,
+        singularity_length=3000,
     ):
         super(CMA, self).__init__()
         self.register_buffer("R", torch.as_tensor(R))
@@ -42,6 +43,7 @@ class CMA(torch.nn.Module):
             self.register_buffer("filter_length", torch.as_tensor(filter_length))
         # Do some clever initalization, first only equalize x-pol and then enable y-pol
         self.register_buffer("no_singularity", torch.as_tensor(no_singularity))
+        self.register_buffer("singularity_length", torch.as_tensor(singularity_length))
         if self.no_singularity:
             self.butterfly_filter.taps[2, :] = 0
             self.butterfly_filter.taps[3, :] = 0
@@ -78,7 +80,7 @@ class CMA(torch.nn.Module):
         ):
             if i % 20000 == 0 and i != 0:
                 lr = lr / 2.0
-            if i == 3000 and self.no_singularity:
+            if i == self.singularity_length and self.no_singularity:
                 self.butterfly_filter.taps[3, :] = -1 * torch.flip(
                     self.butterfly_filter.taps[1, :].conj().resolve_conj(), dims=(0,)
                 )

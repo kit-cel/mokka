@@ -1425,7 +1425,6 @@ class PMDElement(torch.nn.Module):
         ] - 1j * torch.sum(a_s[:, :, None, None] * self.sigma[None, :], 1) * torch.sin(
             thetas[:, None, None]
         )
-        print(J_delta)
         results = [torch.matmul(J_delta[0, :, :], self.J_k1)]
         for J_d in J_delta[1:]:
             results.append(torch.matmul(J_d, results[-1]))
@@ -1517,3 +1516,32 @@ def ProakisChannel(variant, sps=1):
     h = torch.nn.functional.pad(h.unsqueeze(1), (0, oversample))
     h = h.flatten()
     return h
+
+
+class PDLElement(torch.nn.Module):
+    """
+    Simulate PDL in optical channels
+    """
+
+    def __init__(self, rho):
+        """
+        Construct a PDL element which exhibits a differential linear
+        attenuation of rho. To get the attenuation matrix Gamma we
+        first set attenuation of one polarization to sqrt(1+rho) and the other to sqrt(1-rho)
+        and then rotate
+        the matrix with a random rotation matrix uniform in Stokes space.
+
+        :param rho: PDL in linear units
+        """
+        super(PDLElement, self).__init__()
+
+        # We only want to get the initial random rotation
+        # don't want to write the code again
+        rot = PMDElement(0, 0, 0, 0).J.clone()
+        Gamma = torch.sqrt(
+            torch.tensor(((1.0 + rho, 0), (0, 1.0 - rho)), dtype=torch.complex64)
+        )
+        self.Gamma = rot @ Gamma
+
+    def forward(self, signal):
+        return torch.matmul(self.Gamma, signal)

@@ -238,6 +238,7 @@ def correct_start_polarization(signal, pilot_signal, correct_static_phase=False)
     max_values, time_offsets = torch.max(torch.abs(cross_corr), dim=1, keepdim=True)
     # Check if the two maximum values in regular polarization are flipped compare the sum of the maximum values
 
+
     if max_values[0] + max_values[1] > max_values[2] + max_values[3]:
         if correct_static_phase:
             static_phase_shift = torch.angle(
@@ -245,8 +246,13 @@ def correct_start_polarization(signal, pilot_signal, correct_static_phase=False)
                     cross_corr[(0, 1), :], dim=1, index=time_offsets[(0, 1), :]
                 )
             )
-        to = torch.minimum(time_offsets[0], time_offsets[1])
-        aligned_signal = signal[:, to:]
+        num_samples = signal.shape[1] - torch.maximum(time_offsets[0], time_offsets[1])
+        aligned_signal = torch.stack(
+            (
+                signal[0, time_offsets[0] : time_offsets[0] + num_samples],
+                signal[1, time_offsets[1] : time_offsets[1] + num_samples],
+            ),
+        )
     else:
         # Flip polarizations
         if correct_static_phase:
@@ -255,8 +261,15 @@ def correct_start_polarization(signal, pilot_signal, correct_static_phase=False)
                     cross_corr[(3, 2), :], dim=1, index=time_offsets[(3, 2), :]
                 )
             )
-            to = torch.minimum(time_offsets[2], time_offsets[3])
-            aligned_signal = signal[(1, 0), to:]
+        num_samples = signal.shape[1] - torch.maximum(
+            time_offsets[2], time_offsets[3]
+        )
+        aligned_signal = torch.stack(
+            (
+                signal[1, time_offsets[2] : time_offsets[2] + num_samples],
+                signal[0, time_offsets[3] : time_offsets[3] + num_samples],
+            ),
+        )
     if correct_static_phase:
         aligned_signal = aligned_signal * torch.exp(
             torch.tensor(-1j) * static_phase_shift
