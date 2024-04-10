@@ -1545,3 +1545,78 @@ class PDLElement(torch.nn.Module):
 
     def forward(self, signal):
         return torch.matmul(self.Gamma, signal)
+
+
+class DPImpairments(torch.nn.Module):
+    """
+    Apply a list of impairments experienced for dual pol. transmission.
+
+    This includes residual chromatic dispersion, polarization mode dispersion,
+    polarization rotation and IQ shift
+    """
+
+    def __init__(self, samp_rate, tau_cd, tau_pmd, phi_IQ, theta, rho=0):
+        super(DPImpairments, self).__init__()
+        self.samp_rate = torch.as_tensor(samp_rate)
+        self.tau_cd = torch.as_tensor(tau_cd)
+        self.tau_pmd = torch.as_tensor(tau_pmd)
+        self.phi_IQ = torch.atleast_2d(torch.as_tensor(phi_IQ))
+        self.theta = torch.as_tensor(theta)
+
+        self.rho = torch.as_tensor(rho)
+
+    def forward(self, signal):
+        """
+        Apply DPImpairment to a dual polarization signal
+
+        :param signal: Must be a 2xN complex-valued PyTorch tensor
+        """
+        signal_f = torch.fft.fft(signal, axis=1)
+        freq = torch.fft.fftfreq(signal.shape[1], 1 / self.samp_rate)
+        exp_cd = torch.exp(1j * 2 * (torch.pi * freq) ** 2 * self.tau_cd)
+        exp_pmd = torch.exp(1j * torch.pi * self.tau_pmd * freq)
+
+        R_1 = torch.as_tensor(
+            [
+                [torch.cos(self.theta), torch.sin(self.theta)],
+                [-torch.sin(self.theta), torch.cos(self.theta)],
+            ],
+            dtype=torch.complex64,
+        )
+        R_2_IQ = torch.as_tensor(
+            [
+                [torch.cos(self.rho), torch.sin(self.rho)],
+                [torch.sin(self.rho), torch.cos(self.rho)],
+            ],
+            dtype=torch.complex64,
+        ) * torch.exp(-1j * self.phi_IQ)
+
+        Diag_pmd = torch.cat(
+            (
+                torch.cat(
+                    (exp_pmd.unsqueeze(1), torch.zeros_like(exp_pmd).unsqueeze(1)),
+                    axis=1,
+                ).unsqueeze(1),
+                torch.cat(
+                    (
+                        torch.zeros_like(exp_pmd).unsqueeze(1),
+                        exp_pmd.conj().resolve_conj().unsqueeze(1),
+                    ),
+                    axis=1,
+                ).unsqueeze(1),
+            ),
+            axis=1,
+        )
+
+        H = R_1 @ Diag_pmd @ R_2_IQ
+
+        RX_fft = torch.zeros((2, signal_f.shape[1]), dtype=torch.complex64)
+
+        RX_fft[0, :] = (
+            H[:, 0, 0] * signal_f[0, :] + H[:, 0, 1] * signal_f[1, :]
+        ) * exp_cd
+        RX_fft[1, :] = (
+            H[:, 1, 0] * signal_f[0, :] + H[:, 1, 1] * signal_f[1, :]
+        ) * exp_cd
+
+        return torch.fft.ifft(RX_fft, axis=1)

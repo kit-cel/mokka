@@ -61,7 +61,8 @@ class PulseShaping(torch.nn.Module):
         :param n_down: downsampling factor
         :returns: filtered and downsampled signal at symbol rate
         """
-        y_filt = functional.torch.convolve(r, self.impulse_response_conj / n_down)
+        filt_energy = torch.sum(torch.abs(self.impulse_response_conj) ** 2)
+        y_filt = functional.torch.convolve(r, self.impulse_response_conj / filt_energy)
         offset = self.impulse_response_conj.shape[0] - 1
         y = y_filt[::n_down][int(offset / n_down) : -int(offset / n_down)]
         return y
@@ -83,7 +84,9 @@ class PulseShaping(torch.nn.Module):
         # print('current ir_norm',torch.linalg.norm(self.impulse_response))
 
     @classmethod
-    def get_rc_ir(cls, syms, r, n_up, learnable=False, normalize_symbol=False):
+    def get_rc_ir(
+        cls, syms, r, n_up, learnable=False, normalize=True, normalize_symbol=False
+    ):
         """Determine normed coefficients of an RC filter.
 
         Formula out of: K.-D. Kammeyer, Nachrichtenübertragung
@@ -142,16 +145,19 @@ class PulseShaping(torch.nn.Module):
                         )
                     )
 
-            # Norming on Energy = 1
-            ir /= torch.linalg.norm(ir)
+            if normalize:
+                # Norming on Energy = 1
+                ir /= torch.linalg.norm(ir)
 
-            if normalize_symbol:
-                ir /= torch.sqrt(T_sample)
+                if normalize_symbol:
+                    ir /= torch.sqrt(T_sample)
 
         return cls(ir, learnable)
 
     @classmethod
-    def get_rrc_ir(cls, syms, r, n_up, learnable=False, normalize_symbol=False):
+    def get_rrc_ir(
+        cls, syms, r, n_up, learnable=False, normalize=True, normalize_symbol=False
+    ):
         """Determine normed coefficients of an RRC filter.
 
         This function is adapted from Sourcecode written by Dominik Rimpf and was
@@ -174,7 +180,7 @@ class PulseShaping(torch.nn.Module):
             T_ir = 2 * syms * T_symbol
             # Duration of the impulse response is positive and negative
             # normed symbols added multplied by Symbol Duration
-            ir = torch.zeros(int(T_ir / T_sample) + 1)
+            ir = torch.zeros(int(T_ir / T_sample) + 1, dtype=torch.complex64)
             # samples of impulse response is definied by duration of
             # the ir divided by the sample time plus one for the 0th sample
 
@@ -218,11 +224,11 @@ class PulseShaping(torch.nn.Module):
                         * t_steps[k]
                     )
 
-            # Norming on Energy = 1
-            ir /= torch.linalg.norm(ir)
-            ir = ir.type(torch.complex64)
-            if normalize_symbol:
-                ir *= torch.sqrt(torch.tensor(T_sample))
+            if normalize:
+                # Norming on Energy = 1
+                ir /= torch.linalg.norm(ir)
+                if normalize_symbol:
+                    ir *= torch.sqrt(torch.tensor(T_sample))
         return cls(ir, learnable)
 
 
