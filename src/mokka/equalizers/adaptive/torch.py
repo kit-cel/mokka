@@ -497,7 +497,7 @@ class PilotAEQ_DP(torch.nn.Module):
         self.butterfly_filter.taps[2, self.filter_length.item() // 2] = 1.0
 
     def forward(self, y):
-        y_cut = correct_start_polarization(y, self.pilot_sequence_up)
+        y_cut = correct_start_polarization(y, self.pilot_sequence_up[:, : y.shape[1]])
 
         equalizer_length = self.butterfly_filter.taps.size()[1]
         eq_offset = ((equalizer_length - 1) // 2) // self.sps
