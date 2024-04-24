@@ -340,7 +340,6 @@ def correct_start(signal, pilot_signal, correct_static_phase=False):
 
     Return the signal aligned with the first sample of the pilot_signal.
     Optionally correct static_phase_offset using the maximum of the correlation
-
     :param signal: Single polarization complex input signal
     :param pilot_signal: Single polarization complex pilot signal to search for
     :param correct_static_phase: Estimate phase shift from maximum correlation value
@@ -580,4 +579,9 @@ def find_start_offset(signal: torch.Tensor, pilot_signal: torch.Tensor):
         dim=0,
     )
     max_values, time_offsets = torch.max(torch.abs(cross_corr), dim=1, keepdim=True)
-    return time_offsets
+    if max_values[0] + max_values[1] > max_values[2] + max_values[3]:
+        to = torch.minimum(time_offsets[0], time_offsets[1])
+        return signal[:, to:]
+    # Flip polarizations for better start
+    to = torch.minimum(time_offsets[2], time_offsets[3])
+    return signal[(1, 0), to:]
