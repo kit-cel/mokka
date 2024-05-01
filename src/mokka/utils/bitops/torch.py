@@ -42,7 +42,9 @@ def idx2bits(idxs, num_bits_per_symbol):
     bits = torch.remainder(
         torch.bitwise_right_shift(
             torch.unsqueeze(idxs.long(), 1),
-            torch.arange(num_bits_per_symbol, device=idxs.device),
+            torch.flip(
+                torch.arange(num_bits_per_symbol, device=idxs.device), dims=(0,)
+            ),
         ),
         2,
     )
