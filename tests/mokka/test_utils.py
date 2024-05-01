@@ -23,3 +23,20 @@ def test_one_hot():
     for idx in range(2**m):
         expected_result[idx][idx] = 1.0
     assert torch.all(one_hot == expected_result)
+
+
+def test_bits2idx():
+    m = 4
+    bits = generators.torch.generate_bits((100, m))
+    idx = bitops.torch.bits2idx(bits)
+    oh_vector = bitops.torch.bits_to_onehot(bits)
+    oh_idx = bitops.torch.onehot_to_idx(oh_vector)
+    assert torch.all(idx == oh_idx)
+
+
+def test_bits2bits():
+    m = 4
+    bits = generators.torch.generate_bits((100, m))
+    idx = bitops.torch.bits2idx(bits)
+    idx_bits = bitops.torch.idx2bits(idx, m)
+    assert torch.all(bits == idx_bits)
