@@ -52,7 +52,7 @@ class PulseShaping(torch.nn.Module):
         )
         return y_shaped
 
-    def matched(self, r, n_down):
+    def matched(self, r, n_down, max_energy=False):
         """Perform matched filtering.
 
         This function assumes perfect timing sync.
@@ -64,7 +64,24 @@ class PulseShaping(torch.nn.Module):
         filt_energy = torch.sum(torch.abs(self.impulse_response_conj) ** 2)
         y_filt = functional.torch.convolve(r, self.impulse_response_conj / filt_energy)
         offset = self.impulse_response_conj.shape[0] - 1
-        y = y_filt[::n_down][int(offset / n_down) : -int(offset / n_down)]
+        energy_index = 0
+        if max_energy:
+            curr_energy = 0.0
+            for nd in range(n_down):
+                energy = torch.sum(
+                    torch.pow(
+                        torch.abs(
+                            y_filt[nd::n_down][
+                                int(offset / n_down) : -int(offset / n_down)
+                            ]
+                        ),
+                        2,
+                    )
+                )
+                if energy > curr_energy:
+                    curr_energy = energy
+                    energy_index = nd
+        y = y_filt[energy_index::n_down][int(offset / n_down) : -int(offset / n_down)]
         return y
 
     def normalize_filter(self):
