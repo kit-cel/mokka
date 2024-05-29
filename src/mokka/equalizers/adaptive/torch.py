@@ -3,9 +3,15 @@ PyTorch implementations of adaptive equalizers.
 
 """
 from ..torch import Butterfly2x2
-from ..torch import correct_start_polarization
+from ..torch import correct_start_polarization, correct_start, find_start_offset
 from ...functional.torch import convolve_overlap_save
+from ..torch import h2f
 import torch
+import logging
+
+import matplotlib.pyplot as plt
+
+logger = logging.getLogger(__name__)
 
 
 class CMA(torch.nn.Module):
@@ -434,23 +440,15 @@ class VAE_LE_DP(torch.nn.Module):
             group["lr"] = self.lr
 
 
-def update_ZF(y_hat_sym, pilot_seq, pilot_seq_up, _, idx, length, sps):
+def update_adaptive(y_hat_sym, pilot_seq, regression_seq, idx, length, sps):
     e_k = pilot_seq[idx] - y_hat_sym[idx]
     idx_up = idx * sps
 
+    # print("Using regression sequence at indices: ", idx_up, " to ", idx_up + length)
     result = e_k * torch.flip(
-        pilot_seq_up[idx_up : idx_up + length].conj().resolve_conj(), dims=(0,)
+        regression_seq[idx_up : idx_up + length].conj().resolve_conj(), dims=(0,)
     )
-    return result
-
-
-def update_LMS(y_hat_sym, pilot_seq, _, y_samp, idx, length, sps):
-    e_k = pilot_seq[idx] - y_hat_sym[idx]
-    idx_up = idx * sps
-
-    return e_k * torch.flip(
-        y_samp[idx_up : idx_up + length].conj().resolve_conj(), dims=(0,)
-    )
+    return result, e_k
 
 
 class PilotAEQ_DP(torch.nn.Module):
@@ -467,6 +465,12 @@ class PilotAEQ_DP(torch.nn.Module):
         butterfly_filter=None,
         filter_length=31,
         method="LMS",
+        block_size=1,
+        adaptive_lr=False,
+        adaptive_scale=0.1,
+        preeq_method=None,
+        preeq_offset=3000,
+        preeq_lradjust=0.1,
     ):
         super(PilotAEQ_DP, self).__init__()
         self.register_buffer("sps", torch.as_tensor(sps))
@@ -484,12 +488,13 @@ class PilotAEQ_DP(torch.nn.Module):
             self.butterfly_filter.taps[2, filter_length // 2] = 1.0
             self.register_buffer("filter_length", torch.as_tensor(filter_length))
         self.method = method
-        if method == "LMS":
-            self.update = update_LMS
-        elif method == "ZF":
-            self.update = update_ZF
-        elif method == "LMS_ZF":
-            self.update = update_LMS
+        self.update = update_adaptive
+        self.block_size = block_size
+        self.adaptive_lr = adaptive_lr
+        self.adaptive_scale = adaptive_scale
+        self.preeq_method = preeq_method
+        self.preeq_offset = preeq_offset
+        self.preeq_lradjust = preeq_lradjust
 
     def reset(self):
         self.butterfly_filter = Butterfly2x2(num_taps=self.filter_length.item())
@@ -497,69 +502,286 @@ class PilotAEQ_DP(torch.nn.Module):
         self.butterfly_filter.taps[2, self.filter_length.item() // 2] = 1.0
 
     def forward(self, y):
+        # y_cut is perfectly aligned with pilot_sequence_up (after cross correlation & using peak)
         y_cut = correct_start_polarization(y, self.pilot_sequence_up[:, : y.shape[1]])
 
         equalizer_length = self.butterfly_filter.taps.size()[1]
         eq_offset = ((equalizer_length - 1) // 2) // self.sps
         num_samp = y_cut.shape[1]
         u = torch.zeros(
-            (4, (num_samp - equalizer_length) // self.sps, equalizer_length),
+            (
+                4,
+                (self.pilot_sequence.shape[1] - 2 * eq_offset),  # // self.sps,
+                equalizer_length,
+            ),
+            dtype=torch.complex64,
+        )
+        filter_taps = torch.zeros(
+            (
+                4,
+                (self.pilot_sequence.shape[1] - 2 * eq_offset),  # // self.sps,
+                equalizer_length,
+            ),
+            dtype=torch.complex64,
+        )
+        e = torch.zeros(
+            (4, (num_samp - equalizer_length) // self.sps),
+            dtype=torch.complex64,
+        )
+        peak_distortion = torch.zeros(
+            (4, (num_samp - equalizer_length) // self.sps),
             dtype=torch.complex64,
         )
         lr = self.lr  # 1e-3
         out = torch.zeros(
             2, (num_samp - equalizer_length) // self.sps, dtype=torch.complex64
         )
+
+        if self.preeq_method is None:
+            eq_method = self.method
+        else:
+            eq_method = self.preeq_method
+
+        if eq_method in ("LMS"):
+            regression_seq = y_cut.clone()
+        elif eq_method in ("ZF", "ZFadv"):
+            regression_seq = self.pilot_sequence_up.clone()
         for i, k in enumerate(range(equalizer_length, num_samp - 1, self.sps)):
+            # i counts the actual loop number
+            # k starts at equalizer_length
+            # the first symbol we produce in the pilot sequence is at index
+            # (equalizer_length-1)//2
+            # we need the symbols around the center symbol for equalization
             in_index = torch.arange(k - equalizer_length, k)
             out_tmp = self.butterfly_filter(y_cut[:, in_index], "valid")
             out[:, i] = out_tmp.squeeze()
             # Out will contain samples starting with
             # ((filter_length-1)//2)//sps
-            if i * self.sps + 2 * eq_offset < self.pilot_sequence.shape[1]:
-                if i == 3000 and self.method == "LMS_ZF":
-                    self.update = update_ZF
-                u[0, i, :] = self.update(
+            if i + 2 * eq_offset + 1 < self.pilot_sequence.shape[1]:
+                if self.preeq_method is not None and i == self.preeq_offset:
+                    eq_method = self.method
+                    if self.method == "LMS":
+                        regression_seq = y_cut.clone()
+                    elif self.method in ("ZF", "ZFadv"):
+                        regression_seq = self.pilot_sequence_up.clone()
+                if i == self.preeq_offset:
+                    lr = lr * self.preeq_lradjust
+
+                if eq_method == "ZFadv":
+                    # Update regression seq by calculating h from f and estimating \hat{y}
+                    # We can use the same function as in the forward pass
+                    f = torch.stack(
+                        (
+                            torch.stack(
+                                (
+                                    self.butterfly_filter.taps[0, :],
+                                    self.butterfly_filter.taps[1, :],
+                                )
+                            ),
+                            torch.stack(
+                                (
+                                    self.butterfly_filter.taps[3, :],
+                                    self.butterfly_filter.taps[2, :],
+                                )
+                            ),
+                        )
+                    )
+                    h = h2f(f.unsqueeze(0), 0.0).squeeze()
+                    h_filt = Butterfly2x2(
+                        torch.stack((h[0, 0, :], h[0, 1, :], h[1, 1, :], h[1, 0, :]))
+                        .conj()
+                        .resolve_conj()
+                    )
+
+                    # We need equalizer_length samples in regression_seq
+                    h_filt_seq = torch.nn.functional.pad(
+                        self.pilot_sequence_up,
+                        (h_filt.taps.shape[1] // 2 - 1, h_filt.taps.shape[1] // 2 - 1),
+                    )
+                    update_seq = h_filt(
+                        h_filt_seq[
+                            :,
+                            i * self.sps : i * self.sps
+                            + equalizer_length
+                            + h_filt.taps.shape[1]
+                            - 1,
+                        ]
+                    )
+                    regression_seq[
+                        :, i * self.sps : i * self.sps + equalizer_length
+                    ] = update_seq
+                    if i > 5000 and i < 5005:
+                        fig, axs = plt.subplots(2, 2)
+                        # plot updated regression sequence
+                        axs[0][0].plot(
+                            regression_seq[
+                                0, i * self.sps : i * self.sps + equalizer_length
+                            ].real,
+                            label="ZFadv",
+                            marker="x",
+                        )
+                        axs[0][1].plot(
+                            regression_seq[
+                                0, i * self.sps : i * self.sps + equalizer_length
+                            ].imag,
+                            label="ZFadv",
+                            marker="x",
+                        )
+                        axs[1][0].plot(
+                            regression_seq[
+                                1, i * self.sps : i * self.sps + equalizer_length
+                            ].real,
+                            label="ZFadv",
+                            marker="x",
+                        )
+                        axs[1][1].plot(
+                            regression_seq[
+                                1, i * self.sps : i * self.sps + equalizer_length
+                            ].imag,
+                            label="ZFadv",
+                            marker="x",
+                        )
+                        # Plot y_cat
+                        axs[0][0].plot(
+                            y_cut[
+                                0, i * self.sps : i * self.sps + equalizer_length
+                            ].real,
+                            label="y_cut",
+                            marker="x",
+                        )
+                        axs[0][1].plot(
+                            y_cut[
+                                0, i * self.sps : i * self.sps + equalizer_length
+                            ].imag,
+                            label="y_cut",
+                            marker="x",
+                        )
+                        axs[1][0].plot(
+                            y_cut[
+                                1, i * self.sps : i * self.sps + equalizer_length
+                            ].real,
+                            label="y_cut",
+                            marker="x",
+                        )
+                        axs[1][1].plot(
+                            y_cut[
+                                1, i * self.sps : i * self.sps + equalizer_length
+                            ].imag,
+                            label="y_cut",
+                            marker="x",
+                        )
+                        # Plot pilot_sequence_up
+                        axs[0][0].plot(
+                            self.pilot_sequence_up[
+                                0, i * self.sps : i * self.sps + equalizer_length
+                            ].real,
+                            label="pilot_seq_up",
+                            marker="x",
+                        )
+                        axs[0][1].plot(
+                            self.pilot_sequence_up[
+                                0, i * self.sps : i * self.sps + equalizer_length
+                            ].imag,
+                            label="pilot_seq_up",
+                            marker="x",
+                        )
+                        axs[1][0].plot(
+                            self.pilot_sequence_up[
+                                1, i * self.sps : i * self.sps + equalizer_length
+                            ].real,
+                            label="pilot_seq_up",
+                            marker="x",
+                        )
+                        axs[1][1].plot(
+                            self.pilot_sequence_up[
+                                1, i * self.sps : i * self.sps + equalizer_length
+                            ].imag,
+                            label="pilot_seq_up",
+                            marker="x",
+                        )
+
+                        time_offsets = find_start_offset(y_cut, update_seq)
+                        print("i*sps: ", i * self.sps)
+                        print("time_offsets: ", time_offsets)
+
+                        for a in axs.flatten():
+                            a.legend()
+                    # print("Updated taps in locations: ", i * self.sps, "to ", i * self.sps + equalizer_length)
+
+                    # regression_seq =
+                u[0, i, :], e00 = self.update(
                     out[0, :],
                     self.pilot_sequence[0, eq_offset:],
-                    self.pilot_sequence_up[0, :],
-                    y_cut[0, :],
+                    regression_seq[0, :],
                     i,
                     equalizer_length,
                     self.sps,
                 )
-                u[1, i, :] = self.update(
+                u[1, i, :], e01 = self.update(
                     out[0, :],
                     self.pilot_sequence[0, eq_offset:],
-                    self.pilot_sequence_up[1, :],
-                    y_cut[1, :],
+                    regression_seq[1, :],
                     i,
                     equalizer_length,
                     self.sps,
                 )
-                u[2, i, :] = self.update(
+                u[2, i, :], e11 = self.update(
                     out[1, :],
                     self.pilot_sequence[1, eq_offset:],
-                    self.pilot_sequence_up[1, :],
-                    y_cut[1, :],
+                    regression_seq[1, :],
                     i,
                     equalizer_length,
                     self.sps,
                 )
-                u[3, i, :] = self.update(
+                u[3, i, :], e10 = self.update(
                     out[1, :],
                     self.pilot_sequence[1, eq_offset:],
-                    self.pilot_sequence_up[0, :],
-                    y_cut[0, :],
+                    regression_seq[0, :],
                     i,
                     equalizer_length,
                     self.sps,
                 )
-                self.butterfly_filter.taps = self.butterfly_filter.taps + (
-                    2 * lr * u[:, i, :].squeeze()
+                if self.adaptive_lr:
+                    # For LMS according to Rupp 2011 this stepsize ensures the stability/robustness
+                    lr = (
+                        self.adaptive_scale
+                        * 2
+                        / torch.sum(
+                            (
+                                torch.abs(
+                                    regression_seq[
+                                        :,
+                                        i * self.sps : i * self.sps + equalizer_length,
+                                    ]
+                                )
+                                ** 2
+                            ),
+                            dim=1,
+                        )
+                    )
+                    lr = torch.tensor([lr[0], lr[1], lr[1], lr[0]]).unsqueeze(1)
+                    # logger.info("lr: %s", lr.numpy())
+                if i > 0 and i % self.block_size == 0:
+                    self.butterfly_filter.taps = self.butterfly_filter.taps + (
+                        2
+                        * lr
+                        * torch.mean(u[:, i - self.block_size : i, :], dim=1).squeeze()
+                    )
+                filter_taps[:, i, :] = self.butterfly_filter.taps.clone()
+                e[:, i] = torch.stack((e00, e01, e11, e10))
+                peak_distortion[:, i] = torch.mean(
+                    e[:, i].unsqueeze(1)
+                    * self.pilot_sequence[(0, 0, 1, 1), i : i + 2 * eq_offset]
+                    .conj()
+                    .resolve_conj(),
+                    dim=1,
                 )
         # Add some padding in the start
         out = torch.cat((torch.zeros((2, 100), dtype=torch.complex64), out), dim=1)
+        self.u = u
+        self.e = e
+        self.peak_distortion = peak_distortion
+        self.filter_taps = filter_taps
         return out
 
 
@@ -586,48 +808,64 @@ class PilotAEQ_SP(torch.nn.Module):
             "taps", torch.zeros((filter_length,), dtype=torch.complex64)
         )
         self.taps[filter_length // 2] = 1.0
-        if method == "ZF":
-            self.update = update_LMS
-        else:
-            self.update = update_ZF
+        self.update = update_adaptive
+        self.method = method
 
     def reset(self):
         self.taps.zero_()
         self.taps[self.taps.size()[0] // 2] = 1.0
 
     def forward(self, y):
-        y_cut = correct_start_polarization(y, self.pilot_sequence_up)
+        y_cut = correct_start(y, self.pilot_sequence_up)
 
         equalizer_length = self.taps.size()[0]
         eq_offset = ((equalizer_length - 1) // 2) // self.sps
-        num_samp = y_cut.shape[1]
+        num_samp = y_cut.shape[0]
         u = torch.zeros(
             ((num_samp - equalizer_length) // self.sps, equalizer_length),
+            dtype=torch.complex64,
+        )
+        e = torch.zeros(
+            ((num_samp - equalizer_length) // self.sps),
+            dtype=torch.complex64,
+        )
+        peak_distortion = torch.zeros(
+            ((num_samp - equalizer_length) // self.sps),
             dtype=torch.complex64,
         )
         lr = self.lr  # 1e-3
         out = torch.zeros(
             (num_samp - equalizer_length) // self.sps, dtype=torch.complex64
         )
+        if self.method in ("LMS", "LMS_ZF"):
+            regression_seq = y_cut
+        elif self.method in ("ZF"):
+            regression_seq = self.pilot_sequence_up
+
         for i, k in enumerate(range(equalizer_length, num_samp - 1, self.sps)):
             in_index = torch.arange(k - equalizer_length, k)
-            out_tmp = convolve_overlap_save(y_cut[:, in_index], self.taps, "valid")
-            out[:, i] = out_tmp.squeeze()
+            out_tmp = convolve_overlap_save(y_cut[in_index], self.taps, "valid")
+            out[i] = out_tmp.squeeze()
             # Out will contain samples starting with
             # ((filter_length-1)//2)//sps
-            if i * self.sps + 2 * eq_offset < self.pilot_sequence.shape[1]:
-                u[i, :] = self.update(
-                    out[0, :],
-                    self.pilot_sequence[0, eq_offset:],
-                    self.pilot_sequence_up[0, :],
-                    y_cut[0, :],
+            if i * self.sps + 2 * eq_offset < self.pilot_sequence.shape[0]:
+                u[i, :], e[i] = self.update(
+                    out,
+                    self.pilot_sequence[eq_offset:],
+                    regression_seq,
                     i,
                     equalizer_length,
                     self.sps,
                 )
             self.taps = self.taps + (2 * lr * u[i, :].squeeze())
+            peak_distortion[i] = torch.mean(
+                e[i] * self.pilot_sequence[i : i + 2 * eq_offset].conj().resolve_conj()
+            )
         # Add some padding in the start
-        out = torch.cat((torch.zeros((2, 100), dtype=torch.complex64), out), dim=1)
+        self.u = u.clone()
+        self.e = e.clone()
+        self.peak_distortion = peak_distortion.clone()
+        out = torch.cat((torch.zeros((100,), dtype=torch.complex64), out), dim=0)
         return out
 
 

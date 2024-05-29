@@ -40,6 +40,25 @@ class CD_compensation(torch.nn.Module):
         return torch.fft.ifft(Y)
 
 
+class LinearFilter(torch.nn.Module):
+    """ """
+
+    def __init__(self, filter_taps: torch.Tensor, trainable=False, timedomain=True):
+        super(LinearFilter, self).__init__()
+        if trainable:
+            self.register_parameter("taps", torch.nn.Parameter(filter_taps))
+        else:
+            self.register_buffer("taps", filter_taps)
+
+        if timedomain:
+            self.convolve = convolve
+        else:
+            self.convolve = convolve_overlap_save
+
+    def forward(self, y, mode="valid"):
+        return self.convolve(y, self.taps, mode=mode)
+
+
 class Butterfly2x2(torch.nn.Module):
     """
     Class implementing the 2x2 complex butterfly filter structure.
@@ -304,3 +323,184 @@ def correct_start(signal, pilot_signal, correct_static_phase=False):
             torch.tensor(-1j) * static_phase_shift
         )
     return aligned_signal
+
+
+def toeplitz(c, r):
+    """
+    Adapted from https://stackoverflow.com/a/68899386
+    """
+    vals = torch.cat((r, c[1:].flip(0)))
+    shape = len(c), len(r)
+    i, j = torch.ones(*shape, dtype=c.dtype).nonzero().T
+    return vals[j - i].reshape(*shape)
+
+
+def impulse_response_to_toeplitz(h):
+    """
+    Take an impulse response and convert into matrix form
+    """
+    padding = torch.zeros((h.shape[0],), dtype=h.dtype)
+    first_row = torch.cat((h[0].unsqueeze(0), padding))
+    first_col = torch.cat((h, padding))
+    H = toeplitz(first_col, first_row)
+    return H
+
+
+def MU_MMSE_inv(H, N0):
+    """
+    :param H: multiuser compound H matrix with batch indices t,m,r
+              and individual matrices of equal size RxS
+    """
+
+    # Sum over Tx antennas
+    H_tot = torch.zeros(
+        (H.shape[2] * H.shape[3], H.shape[2] * H.shape[3]), dtype=H.dtype
+    )
+    for tx_mat in H:
+        # Sum over individual users
+        for user_mat in tx_mat:
+            # print("user_mat: ", user_mat.flatten(0, 1).shape)
+            # Sum over transmit antenna per user
+            # user_mat is this case is a column-matrix concatenating all
+            # matrices of a particular user & antenna in row direction
+            # We end up with a matrix of shape R N_R x S
+            # We now have H_{t,m}
+            H_tot += torch.matmul(
+                user_mat.flatten(0, 1), user_mat.flatten(0, 1).conj().resolve_conj().T
+            )
+    # After the sum we need to invert this matrix
+    H_tot += N0 * torch.eye(user_mat.shape[1] * user_mat.shape[0], dtype=H.dtype)
+    H_tot_inv = H_tot.inverse()
+    return H_tot_inv
+
+
+def MU_MMSE(H, N0, tx_antenna=0, user=0):
+    """
+    :param H: multiuser compound H matrix with batch indices t,m,r
+              and individual matrices of equal size RxS
+    """
+
+    H_tot_inv = MU_MMSE_inv(H, N0)
+    f_select = torch.matmul(H_tot_inv, H[tx_antenna, user].flatten(0, 1))
+    return f_select
+
+
+def SU_MMSE(H, N0):
+    f = torch.matmul(
+        (
+            torch.matmul(H, H.T.conj().resolve_conj())
+            + N0 * torch.eye(H.shape[0], dtype=H.dtype)
+        ).inverse(),
+        H,
+    )
+    return f
+
+
+def unit_vector(tau, S):
+    """
+    Basically a one-hot vector to select symbols at delay tau.
+    """
+    e = torch.zeros((S,), dtype=torch.complex64)
+    e[tau] = 1.0
+    return e
+
+
+def create_transmit_matrix(s_k, L):
+    """ """
+    cols = s_k.shape[0] - (2 * L - 1)
+    rows = 2 * L
+    S_k = torch.as_strided(s_k[: cols * rows], (cols, rows), (1, 1)).flip(dims=(1,)).T
+    return S_k
+
+
+def pad_transmit_vector(s):
+    return torch.nn.functional.pad(s, (100, 100), "constant", 0)
+
+
+def h2H(h):
+    H_compound = torch.zeros(
+        (h.shape[0], h.shape[1], h.shape[2], h.shape[3] + 1, h.shape[3] * 2),
+        dtype=h.dtype,
+    )
+    for txid, tx_ir in enumerate(h):
+        for uid, user_ir in enumerate(tx_ir):
+            for rxid, recv_ir in enumerate(user_ir):
+                H = impulse_response_to_toeplitz(recv_ir).T
+                H_compound[txid, uid, rxid, :, :] = H.clone()
+    return H_compound
+
+
+def h2f(h, N0):
+    """
+    Construct compound H and calculate F with MMSE/ZF
+    (depending on the setting of N0) and return the filter taps
+    for f
+    :param h: impulse response in time domain h_{t,m,r} for each user/transmit/receive combination
+    :param N0: white noise at receiver
+    """
+
+    H_compound = torch.zeros(
+        (h.shape[0], h.shape[1], h.shape[2], h.shape[3] + 1, h.shape[3] * 2),
+        dtype=h.dtype,
+    )
+    for txid, tx_ir in enumerate(h):
+        for uid, user_ir in enumerate(tx_ir):
+            for rxid, recv_ir in enumerate(user_ir):
+                H = impulse_response_to_toeplitz(recv_ir).T
+                H_compound[txid, uid, rxid, :, :] = H.clone()
+
+    H_tot_inv = MU_MMSE_inv(H_compound, N0)
+
+    F = torch.zeros(
+        (h.shape[0], h.shape[1], h.shape[2] * (h.shape[3] + 1)), dtype=h.dtype
+    )
+    F_split = torch.zeros(
+        (h.shape[0], h.shape[1], h.shape[2], h.shape[3] + 1), dtype=h.dtype
+    )
+    for txid in range(h.shape[0]):
+        for uid in range(h.shape[1]):
+            F[txid, uid, :] = (
+                torch.matmul(H_tot_inv, H_compound[txid, uid].flatten(0, 1))
+                @ unit_vector(h.shape[3], 2 * h.shape[3])
+                .to(torch.complex64)
+                .unsqueeze(1)
+            ).squeeze(-1)
+            for rxid in range(h.shape[2]):
+                f = F[
+                    txid,
+                    uid,
+                    rxid * (h.shape[3] + 1) : (rxid + 1) * (h.shape[3] + 1),
+                ]
+                F_split[txid, uid, rxid, :] = f.view(1, 1, 1, -1).clone()
+                #                F_split = F.reshape((h.shape[0], h.shape[1], h.shape[2], h.shape[3] + 1))
+    return F_split
+
+
+def find_start_offset(signal, pilot_signal):
+    cross_corr = torch.stack(
+        (
+            convolve_overlap_save(
+                signal[0, :],
+                torch.flip(pilot_signal[0, :].conj().resolve_conj(), dims=(0,)),
+                "valid",
+            ),
+            convolve_overlap_save(
+                signal[1, :],
+                torch.flip(pilot_signal[1, :].conj().resolve_conj(), dims=(0,)),
+                "valid",
+            ),
+            convolve_overlap_save(
+                signal[1, :],
+                torch.flip(pilot_signal[0, :].conj().resolve_conj(), dims=(0,)),
+                "valid",
+            ),
+            convolve_overlap_save(
+                signal[0, :],
+                torch.flip(pilot_signal[1, :].conj().resolve_conj(), dims=(0,)),
+                "valid",
+            ),
+        ),
+        dim=0,
+    )
+    max_values, time_offsets = torch.max(torch.abs(cross_corr), dim=1, keepdim=True)
+    return time_offsets

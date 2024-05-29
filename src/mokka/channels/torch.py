@@ -14,6 +14,8 @@ from .. import functional
 from ..pulseshaping.torch import upsample, downsample, brickwall_filter
 from ..functional.torch import convolve_overlap_save
 
+import matplotlib.pyplot as plt
+
 convolve = convolve_overlap_save
 
 logger = logging.getLogger(__name__)
@@ -768,6 +770,8 @@ class SSFMPropagationDualPol(torch.nn.Module):
     num_span: Integer
     delta_G: Float = 1e-3
     maxiter: Integer = 4
+    alphaa_pdl_lin: Float[Tensor, "1"] = torch.tensor(0.0)
+    alphab_pdl_lin: Float[Tensor, "1"] = torch.tensor(0.0)
     psp: Float[Tensor, "2"] = torch.tensor([0, 0])
     solution_method = "elliptical"
     alphaa_lin: Float[Tensor, "1"] = attr.field(init=False)
@@ -778,6 +782,9 @@ class SSFMPropagationDualPol(torch.nn.Module):
     pmd_sigma: Float[Tensor, "1"] = torch.tensor(0.0)
     pmd_correlation_length: Float[Tensor, "1"] = torch.tensor(0.1)
     pmd_parameter: Float[Tensor, "1"] = torch.tensor(0.0)
+    pdl_simulation: Bool = True
+    pdl_min: float = 0.07
+    pdl_max: float = 0.17
 
     def __attrs_pre_init__(self):
         """Pre-init for attrs classes."""
@@ -863,6 +870,15 @@ class SSFMPropagationDualPol(torch.nn.Module):
             ]
             for _ in range(self.num_span)
         ]
+        if self.pdl_simulation:
+            assert self.solver_method == "fixedstep"
+        num_pdl_elements = num_pmd_elements
+        self.pdl_elements = [
+            torch.zeros(num_pdl_elements, dtype=torch.float32).uniform_()
+            * (self.pdl_max - self.pdl_min)
+            + self.pdl_min
+            for _ in range(self.num_span)
+        ]
 
     def get_operators(self, dz):
         """Obtain linear operators for given step length."""
@@ -934,8 +950,8 @@ class SSFMPropagationDualPol(torch.nn.Module):
         executed again to recalculate parameters
         """
         wc = w.clone()
-        self.ha_basis = -self.alphaa_lin / 2 - self.betapa[0]
-        self.hb_basis = -self.alphab_lin / 2 - self.betapb[0]
+        self.ha_basis = -self.alphaa_lin / 2 - self.alphaa_pdl_lin - 1j * self.betapa[0]
+        self.hb_basis = -self.alphab_lin / 2 - self.alphab_pdl_lin - 1j * self.betapb[0]
         for i in range(1, self.betapa.shape[0]):
             self.ha_basis = (
                 self.ha_basis - (1j * self.betapa[i] / math.factorial(i)) * wc
@@ -964,7 +980,7 @@ class SSFMPropagationDualPol(torch.nn.Module):
         # For EDFA apply amplification at the end of each span
 
         # logger.info("y0 norm %s", torch.linalg.vector_norm(y).item())
-        dz = self.dz
+        dz = self.dz.clone()
         # logger.info("u1 norm %s", torch.linalg.vector_norm(u1).item())
         # logger.info("u2 norm %s", torch.linalg.vector_norm(u2).item())
         for span in range(self.num_span):
@@ -993,51 +1009,62 @@ class SSFMPropagationDualPol(torch.nn.Module):
                 h22_dz_2,
                 NOPdz,
             ) = self.get_operators(dz)
-            new_dz = dz
-            if self.solver_method == "fixedstep":
-                new_dz = self.pmd_correlation_length / 2
+            # Restart the simulation at each span from the inital dz
+            new_dz = self.dz.clone()
+            pmd_indices = []
+            logger.debug("new_dz: %s", new_dz)
+            logger.debug("span: %s", span)
             while z + 2 * new_dz <= self.length_span and new_dz != 0:
                 logger.debug("z: %s km", z)
-                # For local error also propagate once with 2*new_dz and compare the error
-                delta_pmd = (
-                    (2 * new_dz) + z
-                ) // self.pmd_correlation_length - z // self.pmd_correlation_length
-                logger.debug("delta_pmd: %s", delta_pmd)
-                if (
-                    self.pmd_simulation
-                    and not self.solver_method == "fixedstep"
-                    and delta_pmd > 0
-                ):
-                    logger.debug("2*new_dz: %s", 2 * new_dz)
-                    diff = self.pmd_correlation_length - torch.remainder(
-                        z, self.pmd_correlation_length
-                    )
-                    logger.debug("diff: %s", diff)
-                    # Ignore if the length difference is too small
-                    if diff > 1e-3:
-                        new_dz = (
-                            (
-                                (z + self.pmd_correlation_length)
-                                // self.pmd_correlation_length
-                            )
-                            * self.pmd_correlation_length
-                            - z
-                        ) / 2
-                if self.pmd_simulation and (
-                    torch.remainder(z, self.pmd_correlation_length) < 1e-3
-                    or self.pmd_correlation_length
-                    - torch.remainder(z, self.pmd_correlation_length)
-                    < 1e-3
-                ):
+                if self.pmd_simulation:
                     pmd_index = int(torch.round(z / self.pmd_correlation_length).item())
                     logger.debug("pmd index: %s", pmd_index)
+                    pmd_indices.append(pmd_index)
                     pmd_element = self.pmd_elements[span][pmd_index]
                     # Calculate beta1 for both polarizations to simulate DGD for this segment
                     # Simulate DGD by retarding pola and advancing polb
                     dgd_dz = pmd_element.DGD_sec * 2 * dz / self.pmd_correlation_length
                     self.betapa[1] = -dgd_dz / 2.0
                     self.betapb[1] = dgd_dz / 2.0
+                    if self.pdl_simulation:
+                        pdl_element = self.pdl_elements[span][pmd_index]
+                        self.alphaa_pdl_lin = -pdl_element / 2
+                        self.alphab_pdl_lin = pdl_element / 2
                     self.calculate_basis(w)
+                    (
+                        h11_2dz,
+                        h11_dz,
+                        h12_2dz,
+                        h12_dz,
+                        h21_2dz,
+                        h21_dz,
+                        h22_2dz,
+                        h22_dz,
+                        NOP2dz,
+                    ) = self.get_operators(2 * dz)
+                    (
+                        h11_dz,
+                        h11_dz_2,
+                        h12_dz,
+                        h12_dz_2,
+                        h21_dz,
+                        h21_dz_2,
+                        h22_dz,
+                        h22_dz_2,
+                        NOPdz,
+                    ) = self.get_operators(dz)
+
+                    # fig, axs = plt.subplots(2,1)
+                    # axs[0].plot(20 * torch.log10(torch.fft.fftshift(torch.abs(torch.exp(self.ha_basis * new_dz)))))
+                    # ph_axs = axs[0].twinx()
+                    # print("angle pol a: ", torch.angle(torch.exp(self.ha_basis * new_dz)))
+                    # ph_axs.plot(torch.fft.fftshift(torch.angle(torch.exp(self.ha_basis * new_dz))), "r")
+                    # ph_axs.set_ylim(-3.2, 3.2)
+
+                    # axs[1].plot(20 * torch.log10(torch.fft.fftshift(torch.abs(torch.exp(self.hb_basis*new_dz)))))
+                    # ph_axs = axs[1].twinx()
+                    # ph_axs.plot(torch.fft.fftshift(torch.angle(torch.exp(self.hb_basis*new_dz))), "r")
+                    # ph_axs.set_ylim(-3.2, 3.2)
 
                 logger.debug("new_dz: %s km", new_dz)
                 # Calculate new operators for length new_dz and length 2*new_dz
@@ -1114,12 +1141,7 @@ class SSFMPropagationDualPol(torch.nn.Module):
                         u1 = u1f
                         u2 = u2f
 
-                    if self.pmd_simulation and (
-                        torch.remainder(z, self.pmd_correlation_length) < 1e-3
-                        or self.pmd_correlation_length
-                        - torch.remainder(z, self.pmd_correlation_length)
-                        < 1e-3
-                    ):
+                    if self.pmd_simulation:
                         pmd_index = int(
                             torch.round(z / self.pmd_correlation_length).item()
                         )
@@ -1151,6 +1173,18 @@ class SSFMPropagationDualPol(torch.nn.Module):
 
             if self.amp is not None and self.amp.amp_type == "EDFA":
                 u1, u2 = self.amp(u1, u2, 2)  # TODO Where to add noise?
+
+            unique_pmd_indices, pmd_indices_counts = torch.unique(
+                torch.as_tensor(pmd_indices), return_counts=True
+            )
+            if not torch.all(pmd_indices_counts == 1):
+                logger.info("Some PMD indices used twice")
+                print(unique_pmd_indices)
+                print(pmd_indices_counts)
+                raise ValueError("Foo")
+            else:
+                logger.info("All PMD indices are unique")
+                print(unique_pmd_indices.shape[0])
             # logger.info("yz norm %s", torch.linalg.vector_norm(yz).item())
         ux = self.TM22 * u1 - self.TM12 * u2
         uy = -self.TM21 * u1 + self.TM11 * u2
@@ -1385,7 +1419,9 @@ class PMDElement(torch.nn.Module):
         # Also calculate DGD
         self.pmd_parameter = pmd_parameter
         mean_DGD = self.pmd_parameter * torch.sqrt(torch.as_tensor(span_length))
-        DGD_sec_mean = mean_DGD / (0.9213 * torch.sqrt(torch.as_tensor(steps_per_span)))
+        DGD_sec_mean = mean_DGD / (
+            0.9213 * torch.sqrt(torch.as_tensor(steps_per_span))
+        )  # 3D Maxwellian distribution
         DGD_sec_std = DGD_sec_mean / 5.0
         self.DGD_sec = DGD_sec_mean + DGD_sec_std * torch.zeros((1,)).normal_()
 
@@ -1620,3 +1656,81 @@ class DPImpairments(torch.nn.Module):
         ) * exp_cd
 
         return torch.fft.ifft(RX_fft, axis=1)
+
+
+class PMDPDLChannel(torch.nn.Module):
+    """
+    Optical channel with only PMD and PDL impairments.
+    """
+
+    def __init__(
+        self,
+        L,
+        num_steps,
+        pmd_parameter,
+        pmd_correlation_length,
+        f_samp,
+        pmd_sigma=0.0,
+        num_pdl_elements=0,
+        pdl_max=0.8,
+        pdl_min=0.1,
+    ):
+        super(PMDPDLChannel, self).__init__()
+        self.dz = L / num_steps
+        self.dt = 1.0 / f_samp
+        self.num_steps = num_steps
+        self.pmd_elements = [
+            PMDElement(pmd_sigma, pmd_parameter, L, num_steps) for _ in range(num_steps)
+        ]
+        dgdsec = torch.as_tensor([p_e.DGD_sec for p_e in self.pmd_elements])
+        fig, axs = plt.subplots()
+        axs.hist(dgdsec)
+        for p_e in self.pmd_elements:
+            logger.debug("DGD sec: %s", p_e.DGD_sec)
+        self.pmd_correlation_length = pmd_correlation_length
+        self.pdl_elements = (
+            torch.zeros(num_pdl_elements, dtype=torch.float32).uniform_()
+            * (pdl_max - pdl_min)
+            + pdl_min
+        )
+
+        if num_pdl_elements > 0:
+            self.pdl_period = num_steps // num_pdl_elements
+        else:
+            self.pdl_period = num_steps + 1
+        self.betapa = torch.zeros((3,), dtype=torch.complex64)
+        self.betapb = torch.zeros((3,), dtype=torch.complex64)
+
+    def forward(self, u):
+        w = (2 * torch.pi * torch.fft.fftfreq(u.shape[1], self.dt * 1e12)).to(
+            self.betapa.device
+        )  # THz
+
+        for n in range(self.num_steps):
+            pmd_element = self.pmd_elements[n]
+            dgd_dz = pmd_element.DGD_sec * self.dz / self.pmd_correlation_length
+            self.betapa[1] = -dgd_dz / 2.0
+            self.betapb[1] = dgd_dz / 2.0
+            if self.pdl_elements.shape[0] > 0 and (n % self.pdl_period) == 0:
+                print(n // self.pdl_period)
+                pdl_element = self.pdl_elements[(n // self.pdl_period)]
+                alphaa_pdl_lin = -pdl_element / 2
+                alphab_pdl_lin = pdl_element / 2
+            else:
+                alphaa_pdl_lin = 0.0
+                alphab_pdl_lin = 0.0
+
+            wc = w.clone()
+            ha_basis = -alphaa_pdl_lin - 1j * self.betapa[0]
+            hb_basis = -alphab_pdl_lin - 1j * self.betapb[0]
+            for i in range(1, self.betapa.shape[0]):
+                ha_basis = ha_basis - (1j * self.betapa[i] / math.factorial(i)) * wc
+                hb_basis = hb_basis - (1j * self.betapb[i] / math.factorial(i)) * wc
+                wc = wc * w
+
+            h11 = torch.exp(ha_basis * self.dz)
+            h22 = torch.exp(hb_basis * self.dz)
+            u_f = torch.fft.fft(u, dim=1) * torch.stack((h11, h22))
+            u = torch.fft.ifft(u_f, dim=1)
+            u = pmd_element(u)
+        return u

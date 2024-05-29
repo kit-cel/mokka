@@ -66,7 +66,7 @@ class CustomConstellationMapper(torch.nn.Module):
         self.register_buffer("m", torch.tensor(m))
         self.register_buffer(
             "symbols",
-            constellation_symbols,
+            constellation_symbols.unsqueeze(1),
         )
 
     def get_constellation(self, *args):
@@ -86,15 +86,9 @@ class CustomConstellationMapper(torch.nn.Module):
         device = b.device
         logger.debug("b size: %s", b.size())
 
-        B_hot = torch.unsqueeze(bits_to_onehot(b), -1).expand(
-            -1, -1, self.symbols.size()[-1]
-        )
+        B_hot = bits_to_onehot(b)
 
-        c = (
-            torch.unsqueeze(self.symbols, 0)
-            .expand(*b.size()[:-1], *((-1,) * (self.symbols.dim())))
-            .to(device)
-        )
+        c = torch.unsqueeze(self.symbols, 0).expand(*b.size()[:-1], -1).to(device)
         x = torch.sum(B_hot * c, 1)
         x = torch.unsqueeze(x, 1)
         return x  # , idx[1]
