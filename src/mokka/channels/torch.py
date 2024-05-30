@@ -1179,12 +1179,12 @@ class SSFMPropagationDualPol(torch.nn.Module):
             )
             if not torch.all(pmd_indices_counts == 1):
                 logger.info("Some PMD indices used twice")
-                print(unique_pmd_indices)
-                print(pmd_indices_counts)
+                # print(unique_pmd_indices)
+                # print(pmd_indices_counts)
                 raise ValueError("Foo")
             else:
                 logger.info("All PMD indices are unique")
-                print(unique_pmd_indices.shape[0])
+                # print(unique_pmd_indices.shape[0])
             # logger.info("yz norm %s", torch.linalg.vector_norm(yz).item())
         ux = self.TM22 * u1 - self.TM12 * u2
         uy = -self.TM21 * u1 + self.TM11 * u2
@@ -1712,7 +1712,6 @@ class PMDPDLChannel(torch.nn.Module):
             self.betapa[1] = -dgd_dz / 2.0
             self.betapb[1] = dgd_dz / 2.0
             if self.pdl_elements.shape[0] > 0 and (n % self.pdl_period) == 0:
-                print(n // self.pdl_period)
                 pdl_element = self.pdl_elements[(n // self.pdl_period)]
                 alphaa_pdl_lin = -pdl_element / 2
                 alphab_pdl_lin = pdl_element / 2

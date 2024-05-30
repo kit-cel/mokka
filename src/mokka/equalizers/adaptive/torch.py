@@ -9,8 +9,6 @@ from ..torch import h2f
 import torch
 import logging
 
-import matplotlib.pyplot as plt
-
 logger = logging.getLogger(__name__)
 
 
@@ -545,7 +543,7 @@ class PilotAEQ_DP(torch.nn.Module):
         if eq_method in ("LMS"):
             regression_seq = y_cut.clone()
         elif eq_method in ("ZF", "ZFadv"):
-            regression_seq = self.pilot_sequence_up.clone()
+            regression_seq = self.pilot_sequence_up.clone().conj().resolve_conj()
         for i, k in enumerate(range(equalizer_length, num_samp - 1, self.sps)):
             # i counts the actual loop number
             # k starts at equalizer_length
@@ -563,7 +561,9 @@ class PilotAEQ_DP(torch.nn.Module):
                     if self.method == "LMS":
                         regression_seq = y_cut.clone()
                     elif self.method in ("ZF", "ZFadv"):
-                        regression_seq = self.pilot_sequence_up.clone()
+                        regression_seq = (
+                            self.pilot_sequence_up.clone().conj().resolve_conj()
+                        )
                 if i == self.preeq_offset:
                     lr = lr * self.preeq_lradjust
 
@@ -610,105 +610,7 @@ class PilotAEQ_DP(torch.nn.Module):
                     regression_seq[
                         :, i * self.sps : i * self.sps + equalizer_length
                     ] = update_seq
-                    if i > 5000 and i < 5005:
-                        fig, axs = plt.subplots(2, 2)
-                        # plot updated regression sequence
-                        axs[0][0].plot(
-                            regression_seq[
-                                0, i * self.sps : i * self.sps + equalizer_length
-                            ].real,
-                            label="ZFadv",
-                            marker="x",
-                        )
-                        axs[0][1].plot(
-                            regression_seq[
-                                0, i * self.sps : i * self.sps + equalizer_length
-                            ].imag,
-                            label="ZFadv",
-                            marker="x",
-                        )
-                        axs[1][0].plot(
-                            regression_seq[
-                                1, i * self.sps : i * self.sps + equalizer_length
-                            ].real,
-                            label="ZFadv",
-                            marker="x",
-                        )
-                        axs[1][1].plot(
-                            regression_seq[
-                                1, i * self.sps : i * self.sps + equalizer_length
-                            ].imag,
-                            label="ZFadv",
-                            marker="x",
-                        )
-                        # Plot y_cat
-                        axs[0][0].plot(
-                            y_cut[
-                                0, i * self.sps : i * self.sps + equalizer_length
-                            ].real,
-                            label="y_cut",
-                            marker="x",
-                        )
-                        axs[0][1].plot(
-                            y_cut[
-                                0, i * self.sps : i * self.sps + equalizer_length
-                            ].imag,
-                            label="y_cut",
-                            marker="x",
-                        )
-                        axs[1][0].plot(
-                            y_cut[
-                                1, i * self.sps : i * self.sps + equalizer_length
-                            ].real,
-                            label="y_cut",
-                            marker="x",
-                        )
-                        axs[1][1].plot(
-                            y_cut[
-                                1, i * self.sps : i * self.sps + equalizer_length
-                            ].imag,
-                            label="y_cut",
-                            marker="x",
-                        )
-                        # Plot pilot_sequence_up
-                        axs[0][0].plot(
-                            self.pilot_sequence_up[
-                                0, i * self.sps : i * self.sps + equalizer_length
-                            ].real,
-                            label="pilot_seq_up",
-                            marker="x",
-                        )
-                        axs[0][1].plot(
-                            self.pilot_sequence_up[
-                                0, i * self.sps : i * self.sps + equalizer_length
-                            ].imag,
-                            label="pilot_seq_up",
-                            marker="x",
-                        )
-                        axs[1][0].plot(
-                            self.pilot_sequence_up[
-                                1, i * self.sps : i * self.sps + equalizer_length
-                            ].real,
-                            label="pilot_seq_up",
-                            marker="x",
-                        )
-                        axs[1][1].plot(
-                            self.pilot_sequence_up[
-                                1, i * self.sps : i * self.sps + equalizer_length
-                            ].imag,
-                            label="pilot_seq_up",
-                            marker="x",
-                        )
 
-                        time_offsets = find_start_offset(y_cut, update_seq)
-                        print("i*sps: ", i * self.sps)
-                        print("time_offsets: ", time_offsets)
-
-                        for a in axs.flatten():
-                            a.legend()
-                    # print("Updated taps in locations: ", i * self.sps, "to ", i * self.sps + equalizer_length)
-
-                    # regression_seq =
                 u[0, i, :], e00 = self.update(
                     out[0, :],
                     self.pilot_sequence[0, eq_offset:],
