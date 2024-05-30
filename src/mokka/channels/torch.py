@@ -14,8 +14,6 @@ from .. import functional
 from ..pulseshaping.torch import upsample, downsample, brickwall_filter
 from ..functional.torch import convolve_overlap_save
 
-import matplotlib.pyplot as plt
-
 convolve = convolve_overlap_save
 
 logger = logging.getLogger(__name__)
@@ -1054,18 +1052,6 @@ class SSFMPropagationDualPol(torch.nn.Module):
                         NOPdz,
                     ) = self.get_operators(dz)
 
-                    # fig, axs = plt.subplots(2,1)
-                    # axs[0].plot(20 * torch.log10(torch.fft.fftshift(torch.abs(torch.exp(self.ha_basis * new_dz)))))
-                    # ph_axs = axs[0].twinx()
-                    # print("angle pol a: ", torch.angle(torch.exp(self.ha_basis * new_dz)))
-                    # ph_axs.plot(torch.fft.fftshift(torch.angle(torch.exp(self.ha_basis * new_dz))), "r")
-                    # ph_axs.set_ylim(-3.2, 3.2)
-
-                    # axs[1].plot(20 * torch.log10(torch.fft.fftshift(torch.abs(torch.exp(self.hb_basis*new_dz)))))
-                    # ph_axs = axs[1].twinx()
-                    # ph_axs.plot(torch.fft.fftshift(torch.angle(torch.exp(self.hb_basis*new_dz))), "r")
-                    # ph_axs.set_ylim(-3.2, 3.2)
-
                 logger.debug("new_dz: %s km", new_dz)
                 # Calculate new operators for length new_dz and length 2*new_dz
                 if new_dz != dz:
@@ -1683,8 +1669,6 @@ class PMDPDLChannel(torch.nn.Module):
             PMDElement(pmd_sigma, pmd_parameter, L, num_steps) for _ in range(num_steps)
         ]
         dgdsec = torch.as_tensor([p_e.DGD_sec for p_e in self.pmd_elements])
-        fig, axs = plt.subplots()
-        axs.hist(dgdsec)
         for p_e in self.pmd_elements:
             logger.debug("DGD sec: %s", p_e.DGD_sec)
         self.pmd_correlation_length = pmd_correlation_length
