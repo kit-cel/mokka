@@ -1660,6 +1660,7 @@ class PMDPDLChannel(torch.nn.Module):
         num_pdl_elements=0,
         pdl_max=0.8,
         pdl_min=0.1,
+        method="freq",
     ):
         super(PMDPDLChannel, self).__init__()
         self.dz = L / num_steps
@@ -1684,8 +1685,17 @@ class PMDPDLChannel(torch.nn.Module):
             self.pdl_period = num_steps + 1
         self.betapa = torch.zeros((3,), dtype=torch.complex64)
         self.betapb = torch.zeros((3,), dtype=torch.complex64)
+        self.method = method
 
     def forward(self, u):
+        if self.method == "freq":
+            return self.forward_freq(u)
+        elif self.method == "time":
+            return self.forward_time(u)
+        else:
+            raise ValueError("self.method must be either freq or time")
+
+    def forward_time(self, u):
         w = (2 * torch.pi * torch.fft.fftfreq(u.shape[1], self.dt * 1e12)).to(
             self.betapa.device
         )  # THz
