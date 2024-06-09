@@ -1717,3 +1717,39 @@ class PMDPDLChannel(torch.nn.Module):
             u = torch.fft.ifft(u_f, dim=1)
             u = pmd_element(u)
         return u
+
+    def forward_freq(self, u):
+        w = (2 * torch.pi * torch.fft.fftfreq(u.shape[1], self.dt * 1e12)).to(
+            self.betapa.device
+        )  # THz
+
+        # We perform the full simulation in the frequency domain
+        u_f = torch.fft.fft(u, dim=1)
+
+        for n in range(self.num_steps):
+            pmd_element = self.pmd_elements[n]
+            dgd_dz = pmd_element.DGD_sec * self.dz / self.pmd_correlation_length
+            self.betapa[1] = -dgd_dz / 2.0
+            self.betapb[1] = dgd_dz / 2.0
+            if self.pdl_elements.shape[0] > 0 and (n % self.pdl_period) == 0:
+                pdl_element = self.pdl_elements[(n // self.pdl_period)]
+                alphaa_pdl_lin = -pdl_element / 2
+                alphab_pdl_lin = pdl_element / 2
+            else:
+                alphaa_pdl_lin = 0.0
+                alphab_pdl_lin = 0.0
+
+            wc = w.clone()
+            ha_basis = -alphaa_pdl_lin - 1j * self.betapa[0]
+            hb_basis = -alphab_pdl_lin - 1j * self.betapb[0]
+            for i in range(1, self.betapa.shape[0]):
+                ha_basis = ha_basis - (1j * self.betapa[i] / math.factorial(i)) * wc
+                hb_basis = hb_basis - (1j * self.betapb[i] / math.factorial(i)) * wc
+                wc = wc * w
+
+            h11 = torch.exp(ha_basis * self.dz)
+            h22 = torch.exp(hb_basis * self.dz)
+            u_f = u_f * torch.stack((h11, h22))
+            u_f = pmd_element(u_f)
+        u = torch.fft.ifft(u_f, dim=1)
+        return u
