@@ -501,7 +501,10 @@ class PilotAEQ_DP(torch.nn.Module):
 
     def forward(self, y):
         # y_cut is perfectly aligned with pilot_sequence_up (after cross correlation & using peak)
-        y_cut = correct_start_polarization(y, self.pilot_sequence_up[:, : y.shape[1]])
+        # The adaptive filter should be able to correct polarization flip on its own
+        y_cut = correct_start_polarization(
+            y, self.pilot_sequence_up[:, : y.shape[1]], correct_polarization=False
+        )
 
         equalizer_length = self.butterfly_filter.taps.size()[1]
         eq_offset = ((equalizer_length - 1) // 2) // self.sps
