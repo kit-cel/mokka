@@ -468,7 +468,7 @@ class PilotAEQ_DP(torch.nn.Module):
         adaptive_scale=0.1,
         preeq_method=None,
         preeq_offset=3000,
-        preeq_lradjust=0.1,
+        preeq_lradjust=1.0,
     ):
         super(PilotAEQ_DP, self).__init__()
         self.register_buffer("sps", torch.as_tensor(sps))
@@ -538,15 +538,23 @@ class PilotAEQ_DP(torch.nn.Module):
             2, (num_samp - equalizer_length) // self.sps, dtype=torch.complex64
         )
 
+        lmszf_weight = 0.5
+
         if self.preeq_method is None:
             eq_method = self.method
         else:
             eq_method = self.preeq_method
 
         if eq_method in ("LMS"):
-            regression_seq = y_cut.clone()
+            regression_seq = y_cut.clone()[:, : self.pilot_sequence_up.shape[1]]
         elif eq_method in ("ZF", "ZFadv"):
             regression_seq = self.pilot_sequence_up.clone().conj().resolve_conj()
+        elif eq_method in ("LMSZF"):
+            regression_seq = (
+                lmszf_weight * y_cut.clone()[:, : self.pilot_sequence_up.shape[1]]
+                + (1 - lmszf_weight)
+                * self.pilot_sequence_up.clone().conj().resolve_conj()
+            )
         for i, k in enumerate(range(equalizer_length, num_samp - 1, self.sps)):
             # i counts the actual loop number
             # k starts at equalizer_length
@@ -566,6 +574,13 @@ class PilotAEQ_DP(torch.nn.Module):
                     elif self.method in ("ZF", "ZFadv"):
                         regression_seq = (
                             self.pilot_sequence_up.clone().conj().resolve_conj()
+                        )
+                    elif self.method == "LMSZF":
+                        regression_seq = (
+                            lmszf_weight
+                            * y_cut.clone()[:, : self.pilot_sequence_up.shape[1]]
+                            + (1 - lmszf_weight)
+                            * self.pilot_sequence_up.clone().conj().resolve_conj()
                         )
                 if i == self.preeq_offset:
                     lr = lr * self.preeq_lradjust
