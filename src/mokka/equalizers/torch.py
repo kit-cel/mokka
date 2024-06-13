@@ -215,7 +215,11 @@ class Butterfly4x4(torch.nn.Module):
 
 
 def correct_start_polarization(
-    signal, pilot_signal, correct_static_phase=False, correct_polarization=True
+    signal,
+    pilot_signal,
+    correct_static_phase=False,
+    correct_polarization=True,
+    return_phase_pol=False,
 ):
     """
     Correlate the signal with a known pilot_signal.
@@ -275,6 +279,7 @@ def correct_start_polarization(
                 signal[1, time_offsets[1] : time_offsets[1] + num_samples],
             ),
         )
+        flip_pol = False
     else:
         # Flip polarizations
         if correct_static_phase:
@@ -290,11 +295,15 @@ def correct_start_polarization(
                 signal[0, time_offsets[3] : time_offsets[3] + num_samples],
             ),
         )
+        flip_pol = True
     if correct_static_phase:
         aligned_signal = aligned_signal * torch.exp(
             torch.tensor(-1j) * static_phase_shift
         )
-    return aligned_signal
+    if not return_phase_pol:
+        return aligned_signal
+    else:
+        return aligned_signal, static_phase_shift, flip_pol
 
 
 def correct_start(signal, pilot_signal, correct_static_phase=False):
