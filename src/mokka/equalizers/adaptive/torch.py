@@ -281,7 +281,7 @@ class VAE_LE_DP(torch.nn.Module):
             num_taps=num_taps_backward, trainable=True, timedomain=True
         )
         self.demapper = demapper
-        self.optimizer = torch.optim.Adam(
+        self.optimizer = torch.optim.SGD(
             self.butterfly_forward.parameters(),
             lr=self.start_lr,  # 0.5e-2,
         )
@@ -304,7 +304,7 @@ class VAE_LE_DP(torch.nn.Module):
             trainable=True,
             timedomain=True,
         ).to(self.butterfly_forward.taps.device)
-        self.optimizer = torch.optim.Adam(
+        self.optimizer = torch.optim.SGD(
             self.butterfly_forward.parameters(),
             lr=self.lr,
         )
@@ -397,6 +397,7 @@ class VAE_LE_DP(torch.nn.Module):
             )
 
             # print("noise_sigma: ", self.demapper.noise_sigma)
+            print(loss)
             loss.backward()
             self.optimizer.step()
             # self.optimizer_var.step()
