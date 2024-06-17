@@ -341,6 +341,7 @@ class VAE_LE_DP(torch.nn.Module):
         requires_q=False,
         IQ_separate=False,
         var_from_estimate=False,
+        num_block_train=None,
     ):
         super(VAE_LE_DP, self).__init__()
 
@@ -360,7 +361,7 @@ class VAE_LE_DP(torch.nn.Module):
             num_taps=num_taps_backward, trainable=True, timedomain=True
         )
         self.demapper = demapper
-        self.optimizer = torch.optim.SGD(
+        self.optimizer = torch.optim.Adam(
             self.butterfly_forward.parameters(),
             lr=self.start_lr,  # 0.5e-2,
         )
@@ -370,6 +371,7 @@ class VAE_LE_DP(torch.nn.Module):
             [self.demapper.noise_sigma],
             lr=0.5,  # 0.5e-2,
         )
+        self.num_block_train = num_block_train
 
     def reset(self):
         self.lr = self.start_lr.clone()
@@ -475,10 +477,13 @@ class VAE_LE_DP(torch.nn.Module):
                 IQ_separate=self.IQ_separate,
             )
 
-            # print("noise_sigma: ", self.demapper.noise_sigma)
-            loss.backward()
-            self.optimizer.step()
-            #self.optimizer_var.step()
+            # logger.info("Iteration: %s/%s, VAE loss: %s", i+1, ((num_samps - index_padding - self.sps * self.block_size) // (self.sps * self.block_size)).item(), loss.item())
+
+            if self.num_block_train is None or (self.num_block_train > i):
+                # print("noise_sigma: ", self.demapper.noise_sigma)
+                loss.backward()
+                self.optimizer.step()
+                # self.optimizer_var.step()
             self.optimizer.zero_grad()
             #self.optimizer_var.zero_grad()
 
