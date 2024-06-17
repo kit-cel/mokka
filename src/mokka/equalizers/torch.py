@@ -285,7 +285,7 @@ def correct_start_polarization(
         if correct_static_phase:
             static_phase_shift = torch.angle(
                 torch.gather(
-                    cross_corr[(3, 2), :], dim=1, index=time_offsets[(3, 2), :]
+                    cross_corr[(2, 3), :], dim=1, index=time_offsets[(2, 3), :]
                 )
             )
         num_samples = signal.shape[1] - torch.maximum(time_offsets[2], time_offsets[3])
