@@ -1002,6 +1002,7 @@ class SSFMPropagationDualPol(torch.nn.Module):
         :param uy: input signal in y-polarization.
         :returns: signal at the end of the fiber
         """
+
         w = (2 * torch.pi * torch.fft.fftfreq(ux.shape[0], self.dt * 1e12)).to(
             self.betapa.device
         )  # THz

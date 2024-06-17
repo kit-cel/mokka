@@ -2356,7 +2356,7 @@ class VAE_LE_DP(torch.nn.Module):
             trainable=True,
             timedomain=True,
         ).to(self.butterfly_forward.taps.device)
-        self.optimizer = torch.optim.SGD(
+        self.optimizer = torch.optim.Adam(
             self.butterfly_forward.parameters(),
             lr=self.lr,
         )
