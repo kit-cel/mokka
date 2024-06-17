@@ -12,10 +12,6 @@ from collections import namedtuple
 
 logger = logging.getLogger(__name__)
 
-import scipy.io
-
-from collections import namedtuple
-
 
 class CMA(torch.nn.Module):
     """Class to perform CMA equalization."""
