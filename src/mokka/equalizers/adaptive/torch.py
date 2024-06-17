@@ -265,16 +265,16 @@ def ELBO_DP_IQ(y, q, sps, amp_levels, h_est, p_amps=None):
             torch.ones_like(amp_levels) / amp_levels.shape[0]
         )
 
-    
+
 
     # # Precompute E_Q{c} = sum( q * c) where c is x and |x|**2
     E_Q_x = torch.zeros(2,2,N, device=q.device, dtype=torch.float32)
     Var = torch.zeros(2,N, device=q.device, dtype=torch.float32)
     num_lev = amp_levels.shape[0]
-    E_Q_x[:,0,::sps] = torch.sum(q[:,:,:num_lev] * amp_levels.unsqueeze(0).unsqueeze(0), dim=-1)#.permute(0,2,1) 
+    E_Q_x[:,0,::sps] = torch.sum(q[:,:,:num_lev] * amp_levels.unsqueeze(0).unsqueeze(0), dim=-1)#.permute(0,2,1)
     E_Q_x[:,1,::sps] = torch.sum(q[:,:,num_lev:] * amp_levels.unsqueeze(0).unsqueeze(0), dim=-1)#.permute(0,2,1)
     Var[:,::sps] = torch.add( # Precompute E_Q{|x|^2}
-            torch.sum(q[:,:,:num_lev] * (amp_levels**2).unsqueeze(0).unsqueeze(0), dim=-1), 
+            torch.sum(q[:,:,:num_lev] * (amp_levels**2).unsqueeze(0).unsqueeze(0), dim=-1),
             torch.sum(q[:,:,num_lev:] * (amp_levels**2).unsqueeze(0).unsqueeze(0), dim=-1)
         )
     Var[:,::sps] -=  torch.sum(E_Q_x[:,:,::sps]**2, dim=1)
@@ -282,9 +282,9 @@ def ELBO_DP_IQ(y, q, sps, amp_levels, h_est, p_amps=None):
 
     h_absq = torch.sum(h**2, dim=2)
 
-    D_real = torch.zeros(2,N-2*L_offset, device=q.device, dtype=torch.float32)  
+    D_real = torch.zeros(2,N-2*L_offset, device=q.device, dtype=torch.float32)
     D_imag = torch.zeros(2,N-2*L_offset, device=q.device, dtype=torch.float32)
-    E = torch.zeros(2, device=q.device, dtype=torch.float32)    
+    E = torch.zeros(2, device=q.device, dtype=torch.float32)
     idx = torch.arange(2*L_offset,N)
     nm = idx.shape[0]
 
@@ -472,14 +472,14 @@ class VAE_LE_DP(torch.nn.Module):
                 p_constellation=self.demapper.p_symbols,
                 IQ_separate=self.IQ_separate,
             )
-            
+
             # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
             self.optimizer.step()
             #self.optimizer_var.step()
             self.optimizer.zero_grad()
             #self.optimizer_var.zero_grad()
-            
+
             if self.var_from_estimate == True:
                 self.demapper.noise_sigma = torch.clamp(
                     torch.sqrt(torch.mean(var.detach().clone())/2), min=torch.tensor(0.05, requires_grad=False, device=q_hat.device) , max=2*self.demapper.noise_sigma.detach().clone() #torch.sqrt(var).detach()), min=0.1
@@ -492,7 +492,7 @@ class VAE_LE_DP(torch.nn.Module):
             out.append(
                 output_symbols
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
-            
+
             output_q = q_hat[
                 :, : self.block_size, :
             ]
@@ -502,7 +502,7 @@ class VAE_LE_DP(torch.nn.Module):
 
         #print("loss: ", loss, "\t\t\t var: ", var)
         # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
-        
+
         if self.requires_q == True:
             eq_out = namedtuple("eq_out", ["y", "q", "var", "loss"])
             return eq_out(torch.cat(out, axis=1), torch.cat(out_q, axis=1), var, loss)
@@ -651,7 +651,7 @@ class VAE_LE_DP_IQ(torch.nn.Module):
                 p_amps=self.demapper.p_symbols
                 #p_constellation=self.demapper.p_symbols
             )
-            
+
             # print("noise_sigma: ", self.demapper.noise_sigma)
             print(loss)
             loss.backward()
