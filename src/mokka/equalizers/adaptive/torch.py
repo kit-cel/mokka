@@ -704,11 +704,11 @@ class VAE_LE_DP_IQ(torch.nn.Module):
 
 def update_adaptive(y_hat_sym, pilot_seq, regression_seq, idx, length, sps):
     e_k = pilot_seq[idx] - y_hat_sym[idx]
-    idx_up = idx * sps
+    # idx_up = idx * sps
 
     # print("Using regression sequence at indices: ", idx_up, " to ", idx_up + length)
     result = e_k * torch.flip(
-        regression_seq[idx_up : idx_up + length].conj().resolve_conj(), dims=(0,)
+        regression_seq.conj().resolve_conj(), dims=(0,)
     )
     return result, e_k
 
@@ -815,8 +815,9 @@ class PilotAEQ_DP(torch.nn.Module):
             regression_seq = self.pilot_sequence_up.clone().conj().resolve_conj()
         elif eq_method in ("LMSZF"):
             regression_seq = (
-                lmszf_weight * y_cut.clone()[:, : self.pilot_sequence_up.shape[1]]
-                + (1 - lmszf_weight)
+                torch.sqrt(torch.as_tensor(lmszf_weight))
+                * y_cut.clone()[:, : self.pilot_sequence_up.shape[1]]
+                + torch.sqrt(1.0 - torch.as_tensor(lmszf_weight))
                 * self.pilot_sequence_up.clone().conj().resolve_conj()
             )
         for i, k in enumerate(range(equalizer_length, num_samp - 1, self.sps)):
@@ -836,16 +837,41 @@ class PilotAEQ_DP(torch.nn.Module):
                     if self.method == "LMS":
                         regression_seq = y_cut.clone()
                     elif self.method in ("ZF", "ZFadv"):
-                        regression_seq = (
-                            self.pilot_sequence_up.clone().conj().resolve_conj()
-                        )
+                        regression_seq = self.pilot_sequence_up.clone()#.conj().resolve_conj()
                     elif self.method == "LMSZF":
                         regression_seq = (
-                            lmszf_weight
+                            torch.sqrt(torch.as_tensor(lmszf_weight))
                             * y_cut.clone()[:, : self.pilot_sequence_up.shape[1]]
-                            + (1 - lmszf_weight)
-                            * self.pilot_sequence_up.clone().conj().resolve_conj()
+                            + torch.sqrt(1.0 - torch.as_tensor(lmszf_weight))
+                            * self.pilot_sequence_up.clone()
                         )
+                    # print(
+                    #     "mean y_cut energy: ",
+                    #     torch.mean(
+                    #         torch.pow(
+                    #             torch.abs(
+                    #                 y_cut.clone()[:, : self.pilot_sequence_up.shape[1]]
+                    #             ),
+                    #             2,
+                    #         )
+                    #     ),
+                    # )
+                    # print(
+                    #     "mean pilot_seq_up energy: ",
+                    #     torch.mean(
+                    #         torch.pow(
+                    #             torch.abs(
+                    #                 self.pilot_sequence_up.clone().conj().resolve_conj()
+                    #             ),
+                    #             2,
+                    #         )
+                    #     ),
+                    # )
+
+                    # print(
+                    #     "mean regression seq energy: ",
+                    #     torch.mean(torch.pow(torch.abs(regression_seq), 2)),
+                    # )
                 if i == self.preeq_offset:
                     lr = lr * self.preeq_lradjust
 
@@ -896,7 +922,7 @@ class PilotAEQ_DP(torch.nn.Module):
                 u[0, i, :], e00 = self.update(
                     out[0, :],
                     self.pilot_sequence[0, eq_offset:],
-                    regression_seq[0, :],
+                    regression_seq[0, in_index],
                     i,
                     equalizer_length,
                     self.sps,
@@ -904,7 +930,7 @@ class PilotAEQ_DP(torch.nn.Module):
                 u[1, i, :], e01 = self.update(
                     out[0, :],
                     self.pilot_sequence[0, eq_offset:],
-                    regression_seq[1, :],
+                    regression_seq[1, in_index],
                     i,
                     equalizer_length,
                     self.sps,
@@ -912,7 +938,7 @@ class PilotAEQ_DP(torch.nn.Module):
                 u[2, i, :], e11 = self.update(
                     out[1, :],
                     self.pilot_sequence[1, eq_offset:],
-                    regression_seq[1, :],
+                    regression_seq[1, in_index],
                     i,
                     equalizer_length,
                     self.sps,
@@ -920,7 +946,7 @@ class PilotAEQ_DP(torch.nn.Module):
                 u[3, i, :], e10 = self.update(
                     out[1, :],
                     self.pilot_sequence[1, eq_offset:],
-                    regression_seq[0, :],
+                    regression_seq[0, in_index],
                     i,
                     equalizer_length,
                     self.sps,
