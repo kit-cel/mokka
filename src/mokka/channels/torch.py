@@ -1729,13 +1729,16 @@ class PMDPDLChannel(torch.nn.Module):
         return u
 
     def forward_freq(self, u):
-        w = (2 * torch.pi * torch.fft.fftfreq(u.shape[1], self.dt * 1e12)).to(
-            self.betapa.device
-        )  # THz
-
         # We perform the full simulation in the frequency domain
         u_f = torch.fft.fft(u, dim=1)
+        u_f = self._forward_freq(u_f)
+        u = torch.fft.ifft(u_f, dim=1)
+        return u
 
+    def _forward_freq(self, u_f):
+        w = (2 * torch.pi * torch.fft.fftfreq(u_f.shape[1], self.dt * 1e12)).to(
+            self.betapa.device
+        )  # THz
         for n in range(self.num_steps):
             pmd_element = self.pmd_elements[n]
             dgd_dz = pmd_element.DGD_sec * self.dz / self.pmd_correlation_length
@@ -1761,5 +1764,14 @@ class PMDPDLChannel(torch.nn.Module):
             h22 = torch.exp(hb_basis * self.dz)
             u_f = u_f * torch.stack((h11, h22))
             u_f = pmd_element(u_f)
-        u = torch.fft.ifft(u_f, dim=1)
-        return u
+        return u_f
+
+    def channel_transfer(self, length):
+        phase_shift = 2 * torch.pi * torch.fft.fftfreq(length, 1) * (length // 2 + 1)
+        u_f = torch.zeros((2, length), dtype=torch.complex64)
+        u_f[0, :] = torch.ones(length, dtype=torch.complex64) * torch.exp(
+            1j * phase_shift
+        )
+        h_x = self._forward_freq(u_f)
+        h_y = self._forward_freq(torch.flip(u_f, dims=(0,)))
+        return torch.cat((h_x, h_y), dim=0)
