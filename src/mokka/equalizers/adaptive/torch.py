@@ -775,6 +775,7 @@ class PilotAEQ_DP(torch.nn.Module):
         preeq_method=None,
         preeq_offset=3000,
         preeq_lradjust=1.0,
+        lmszf_weight=0.5,
     ):
         super(PilotAEQ_DP, self).__init__()
         self.register_buffer("sps", torch.as_tensor(sps))
@@ -799,6 +800,7 @@ class PilotAEQ_DP(torch.nn.Module):
         self.preeq_method = preeq_method
         self.preeq_offset = preeq_offset
         self.preeq_lradjust = preeq_lradjust
+        self.lmszf_weight = torch.as_tensor(lmszf_weight)
 
     def reset(self):
         self.butterfly_filter = Butterfly2x2(num_taps=self.filter_length.item())
@@ -844,8 +846,6 @@ class PilotAEQ_DP(torch.nn.Module):
             2, (num_samp - equalizer_length) // self.sps, dtype=torch.complex64
         )
 
-        lmszf_weight = 0.5
-
         if self.preeq_method is None:
             eq_method = self.method
         else:
@@ -857,9 +857,9 @@ class PilotAEQ_DP(torch.nn.Module):
             regression_seq = self.pilot_sequence_up.clone().conj().resolve_conj()
         elif eq_method in ("LMSZF"):
             regression_seq = (
-                torch.sqrt(torch.as_tensor(lmszf_weight))
+                torch.sqrt(torch.as_tensor(self.lmszf_weight))
                 * y_cut.clone()[:, : self.pilot_sequence_up.shape[1]]
-                + torch.sqrt(1.0 - torch.as_tensor(lmszf_weight))
+                + torch.sqrt(1.0 - torch.as_tensor(self.lmszf_weight))
                 * self.pilot_sequence_up.clone().conj().resolve_conj()
             )
         for i, k in enumerate(range(equalizer_length, num_samp - 1, self.sps)):
@@ -879,13 +879,13 @@ class PilotAEQ_DP(torch.nn.Module):
                     if self.method == "LMS":
                         regression_seq = y_cut.clone()
                     elif self.method in ("ZF", "ZFadv"):
-                        regression_seq = self.pilot_sequence_up.clone()#.conj().resolve_conj()
+                        regression_seq = self.pilot_sequence_up.clone().conj().resolve_conj()
                     elif self.method == "LMSZF":
                         regression_seq = (
-                            torch.sqrt(torch.as_tensor(lmszf_weight))
+                            torch.sqrt(torch.as_tensor(self.lmszf_weight))
                             * y_cut.clone()[:, : self.pilot_sequence_up.shape[1]]
-                            + torch.sqrt(1.0 - torch.as_tensor(lmszf_weight))
-                            * self.pilot_sequence_up.clone()
+                            + torch.sqrt(1.0 - torch.as_tensor(self.lmszf_weight))
+                            * self.pilot_sequence_up.clone().conj().resolve_conj()
                         )
                     # print(
                     #     "mean y_cut energy: ",
