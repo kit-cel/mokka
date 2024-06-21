@@ -1494,6 +1494,26 @@ class FixedChannelDP(torch.nn.Module):
         )
 
 
+class FixedArbitraryChannelDP(torch.nn.Module):
+    """
+    Apply a fixed channel impulse response on both polarization separately
+    """
+
+    def __init__(self, impulse_response):
+        super(FixedArbitraryChannelDP, self).__init__()
+
+        self.impulse_response = torch.as_tensor(impulse_response)
+
+    def forward(self, tx_signal):
+        return torch.stack(
+            (
+                convolve(tx_signal[0, :], self.impulse_response[0,:], mode="full") + convolve(tx_signal[1,:], self.impulse_response[1,:], mode="full"),
+                convolve(tx_signal[1, :], self.impulse_response[2,:], mode="full") + convolve(tx_signal[0,:], self.impulse_response[3,:], mode="full")
+            )
+        )
+
+
+
 class FixedChannelSP(torch.nn.Module):
     """
     Apply a fixed channel impulse response for a single polarization
@@ -1766,12 +1786,14 @@ class PMDPDLChannel(torch.nn.Module):
             u_f = pmd_element(u_f)
         return u_f
 
-    def channel_transfer(self, length):
+    def channel_transfer(self, length, pulse_shape=None):
         phase_shift = 2 * torch.pi * torch.fft.fftfreq(length, 1) * (length // 2 + 1)
         u_f = torch.zeros((2, length), dtype=torch.complex64)
         u_f[0, :] = torch.ones(length, dtype=torch.complex64) * torch.exp(
             1j * phase_shift
         )
+        if pulse_shape is not None:
+            u_f = u_f * pulse_shape.unsqueeze(0)
         h_x = self._forward_freq(u_f)
         h_y = self._forward_freq(torch.flip(u_f, dims=(0,)))
         return torch.cat((h_x, h_y), dim=0)
