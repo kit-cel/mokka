@@ -1381,10 +1381,11 @@ class PMDElement(torch.nn.Module):
     Note: for SSFM only static PMD is correct
     """
 
-    def __init__(self, sigma_p, pmd_parameter, span_length, steps_per_span):
+    def __init__(self, sigma_p, pmd_parameter, span_length, steps_per_span, method="static"):
         super(PMDElement, self).__init__()
         # Apply PMD using matrix J_k which can be calculated from J(\alpha_k)
         # Pauli spin matrices
+        self.method = method
         self.sigma = torch.tensor(
             [[[1, 0], [0, -1]], [[0, 1], [1, 0]], [[0, -1j], [1j, 0]]],
             dtype=torch.complex64,
@@ -1433,7 +1434,7 @@ class PMDElement(torch.nn.Module):
         if self.sigma_p == 0.0:
             return self.J_k1
         self.alpha = torch.zeros((3,), dtype=torch.float32).normal_() * self.sigma_p
-        self.J_k1 = self.J
+        self.J_k1 = self.J # This applies the J_delta approach to update J_k1
         return self.J_k1
 
     def steps(self, k=1):
@@ -1453,22 +1454,25 @@ class PMDElement(torch.nn.Module):
         self.J_k1 = results[-1]
         return torch.stack(results)
 
+    def forward_static(self, signal: torch.Tensor):
+        return torch.matmul(self.J_k1, signal)
+
+    def forward_dynamic(self, signal: torch.Tensor):
+        num_steps = signal.shape[1]
+        J_k = self.steps(num_steps)
+        signal_out = torch.bmm(J_k, signal.unsqueeze(-1)).squeeze()
+        return signal_out
+
     def forward(self, signal: torch.Tensor):
         """
         Process a dual polarization signal and apply PMD with a random walk to it.
 
         :param signal:
         """
-        # In the first dimension we have the number of samples we need to apply PMD
-        num_steps = signal.shape[0]
-        # Static case
-        if self.sigma_p == 0.0:
-            return torch.matmul(self.J_k1, signal)
-        # Dynamic/time-varying case
-        J_k = self.steps(num_steps)
-        signal_out = torch.bmm(J_k, signal.unsqueeze(-1)).squeeze()
-        return signal_out
-
+        if self.method == "static":
+            return self.forward_static(signal)
+        elif self.method == "dynamic":
+            return self.forward_dynamic(signal)
 
 class FixedChannelDP(torch.nn.Module):
     """
@@ -1706,6 +1710,10 @@ class PMDPDLChannel(torch.nn.Module):
         self.betapa = torch.zeros((3,), dtype=torch.complex64)
         self.betapb = torch.zeros((3,), dtype=torch.complex64)
         self.method = method
+
+    def step(self):
+        for pe in self.pmd_elements:
+            _ = pe.step()
 
     def forward(self, u):
         if self.method == "freq":
