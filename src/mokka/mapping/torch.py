@@ -260,7 +260,7 @@ class ConstellationMapper(torch.nn.Module):
                     dim=1,
                 )
                 .to(device)
-                .squeeze()
+                .squeeze(2)
             )
             # Generate Constellation mapping c of size 2**m
             # c = self.ReLU(self.map1(snr_dB))
@@ -525,7 +525,7 @@ class ConstellationDemapper(torch.nn.Module):
         if len(self.demod_extra_params):
             # Input is y: (batchsize x symbols per snr), snr: (batchsize x 1)
             y = torch.cat(
-                (y, torch.cat(args, 1)),
+                (y, torch.cat(args[self.demod_extra_params].split(1, -1), 1)),
                 1,
             )
         for demap in self.demaps[:-1]:
