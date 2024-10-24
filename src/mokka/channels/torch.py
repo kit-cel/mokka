@@ -780,7 +780,7 @@ class SSFMPropagationDualPol(torch.nn.Module):
     pmd_sigma: Float[Tensor, "1"] = torch.tensor(0.0)
     pmd_correlation_length: Float[Tensor, "1"] = torch.tensor(0.1)
     pmd_parameter: Float[Tensor, "1"] = torch.tensor(0.0)
-    pdl_simulation: Bool = True
+    pdl_simulation: Bool = False
     pdl_min: float = 0.07
     pdl_max: float = 0.17
 
@@ -798,6 +798,7 @@ class SSFMPropagationDualPol(torch.nn.Module):
         )  # dB/km -> 1/km
         self.Psi = self.psp[0]
         self.Chi = self.psp[1]
+        self.dz = torch.as_tensor(self.dz)
 
         if self.solution_method == "elliptical":
             self.TM11 = torch.cos(self.Psi) * torch.cos(self.Chi) + 1j * torch.sin(
@@ -847,7 +848,7 @@ class SSFMPropagationDualPol(torch.nn.Module):
             assert self.solver_method == "fixedstep"
             # Make the stepsize half the size of correlation length since
             # we take two steps per loop
-            self.dz = self.pmd_correlation_length / 2.0
+            self.dz = torch.as_tensor(self.pmd_correlation_length / 2.0)
         num_pmd_elements = (
             int(
                 (
@@ -1687,7 +1688,7 @@ class PMDPDLChannel(torch.nn.Module):
         method="freq",
     ):
         super(PMDPDLChannel, self).__init__()
-        self.dz = L / num_steps
+        self.dz = torch.as_tensor(L / num_steps)
         self.dt = 1.0 / f_samp
         self.num_steps = num_steps
         self.pmd_elements = [
