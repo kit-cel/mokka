@@ -649,9 +649,7 @@ class SSFMPropagationSinglePol(torch.nn.Module):
         self.h_basis = -self.alphalin / 2 - self.betap[0]
         wc = w
         for i in range(1, self.betap.shape[0]):
-            self.h_basis = (
-                self.h_basis - (1j * self.betap[i] / np.math.factorial(i)) * wc
-            )
+            self.h_basis = self.h_basis - (1j * self.betap[i] / math.factorial(i)) * wc
             wc = wc * w
 
         uz = u
@@ -1382,7 +1380,9 @@ class PMDElement(torch.nn.Module):
     Note: for SSFM only static PMD is correct
     """
 
-    def __init__(self, sigma_p, pmd_parameter, span_length, steps_per_span, method="static"):
+    def __init__(
+        self, sigma_p, pmd_parameter, span_length, steps_per_span, method="static"
+    ):
         super(PMDElement, self).__init__()
         # Apply PMD using matrix J_k which can be calculated from J(\alpha_k)
         # Pauli spin matrices
@@ -1435,7 +1435,7 @@ class PMDElement(torch.nn.Module):
         if self.sigma_p == 0.0:
             return self.J_k1
         self.alpha = torch.zeros((3,), dtype=torch.float32).normal_() * self.sigma_p
-        self.J_k1 = self.J # This applies the J_delta approach to update J_k1
+        self.J_k1 = self.J  # This applies the J_delta approach to update J_k1
         return self.J_k1
 
     def steps(self, k=1):
@@ -1475,6 +1475,7 @@ class PMDElement(torch.nn.Module):
         elif self.method == "dynamic":
             return self.forward_dynamic(signal)
 
+
 class FixedChannelDP(torch.nn.Module):
     """
     Apply a fixed channel impulse response on both polarization separately
@@ -1512,11 +1513,12 @@ class FixedArbitraryChannelDP(torch.nn.Module):
     def forward(self, tx_signal):
         return torch.stack(
             (
-                convolve(tx_signal[0, :], self.impulse_response[0,:], mode="full") + convolve(tx_signal[1,:], self.impulse_response[1,:], mode="full"),
-                convolve(tx_signal[1, :], self.impulse_response[2,:], mode="full") + convolve(tx_signal[0,:], self.impulse_response[3,:], mode="full")
+                convolve(tx_signal[0, :], self.impulse_response[0, :], mode="full")
+                + convolve(tx_signal[1, :], self.impulse_response[1, :], mode="full"),
+                convolve(tx_signal[1, :], self.impulse_response[2, :], mode="full")
+                + convolve(tx_signal[0, :], self.impulse_response[3, :], mode="full"),
             )
         )
-
 
 
 class FixedChannelSP(torch.nn.Module):
