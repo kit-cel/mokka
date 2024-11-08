@@ -1,3 +1,5 @@
+stages:
+  - test
 default:
   tags:
     - cel-runner
@@ -68,3 +70,12 @@ pre-commit:
     else
         exit 0  # we're all good, pipeline can proceed
     fi
+
+pytest:
+  stage: test
+  image: python:3.12
+  before_script: |
+    - pip install -e ".[all]"
+
+  script: |
+    - pytest tests/
