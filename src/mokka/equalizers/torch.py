@@ -41,9 +41,21 @@ class CD_compensation(torch.nn.Module):
 
 
 class LinearFilter(torch.nn.Module):
-    """ """
+    """Class implementing a SISO linear filter, optionally with trainable filter_taps."""
 
-    def __init__(self, filter_taps: torch.Tensor, trainable=False, timedomain=True):
+    def __init__(
+        self,
+        filter_taps: torch.Tensor,
+        trainable: bool = False,
+        timedomain: bool = True,
+    ):
+        """
+        Initialize LinearFilter with filter taps and define if it is trainable.
+
+        :param filter_taps: Filter taps for the linear filter
+        :param trainable: Set filter taps as :py:class:`torch.nn.Parameter`
+        :param timedomain: Perform convolution in time domain
+        """
         super(LinearFilter, self).__init__()
         if trainable:
             self.register_parameter("taps", torch.nn.Parameter(filter_taps))
@@ -55,7 +67,12 @@ class LinearFilter(torch.nn.Module):
         else:
             self.convolve = convolve_overlap_save
 
-    def forward(self, y, mode="valid"):
+    def forward(self, y: torch.Tensor, mode: str = "valid"):
+        """
+        Perform filtering of signal.
+
+        :param y: input signal
+        """
         return self.convolve(y, self.taps, mode=mode)
 
 
@@ -339,9 +356,7 @@ def correct_start(signal, pilot_signal, correct_static_phase=False):
 
 
 def toeplitz(c, r):
-    """
-    Adapted from https://stackoverflow.com/a/68899386
-    """
+    """Adapted from https://stackoverflow.com/a/68899386 with modifications."""
     vals = torch.cat((r, c[1:].flip(0)))
     shape = len(c), len(r)
     i, j = torch.ones(*shape, dtype=c.dtype).nonzero().T
@@ -349,9 +364,7 @@ def toeplitz(c, r):
 
 
 def impulse_response_to_toeplitz(h):
-    """
-    Take an impulse response and convert into matrix form
-    """
+    """Take an impulse response and convert into matrix form."""
     padding = torch.zeros((h.shape[0],), dtype=h.dtype)
     first_row = torch.cat((h[0].unsqueeze(0), padding))
     first_col = torch.cat((h, padding))
@@ -361,10 +374,11 @@ def impulse_response_to_toeplitz(h):
 
 def MU_MMSE_inv(H, N0):
     """
+    Find inverse of multiuser compound H matrix based on multiuser MMSE algorithm.
+
     :param H: multiuser compound H matrix with batch indices t,m,r
               and individual matrices of equal size RxS
     """
-
     # Sum over Tx antennas
     H_tot = torch.zeros(
         (H.shape[2] * H.shape[3], H.shape[2] * H.shape[3]), dtype=H.dtype
@@ -389,16 +403,26 @@ def MU_MMSE_inv(H, N0):
 
 def MU_MMSE(H, N0, tx_antenna=0, user=0):
     """
+    Compute equalizer taps for given tx_antenna and user.
+
+    Specify a compound H matrix, AWGN noise power a tx_antenna index and a user index
+    and obtain the corresponding linear equalizer matrix.
+
     :param H: multiuser compound H matrix with batch indices t,m,r
               and individual matrices of equal size RxS
     """
-
     H_tot_inv = MU_MMSE_inv(H, N0)
     f_select = torch.matmul(H_tot_inv, H[tx_antenna, user].flatten(0, 1))
     return f_select
 
 
-def SU_MMSE(H, N0):
+def SU_MMSE(H: torch.Tensor, N0: float):
+    """
+    Compute equalizer taps according to the single user MMSE algorithm.
+
+    :param H: Channel impulse matrix
+    :param N0: AWGN noise power
+    """
     f = torch.matmul(
         (
             torch.matmul(H, H.T.conj().resolve_conj())
@@ -409,28 +433,49 @@ def SU_MMSE(H, N0):
     return f
 
 
-def unit_vector(tau, S):
+def unit_vector(tau: int, S: int):
     """
-    Basically a one-hot vector to select symbols at delay tau.
+    One-hot vector to select symbols at delay tau.
+
+    :param tau: Delay to generate unit_vector for
+    :param S: Length of the vector
+    :returns: unit vector with impulse at delay tau
     """
     e = torch.zeros((S,), dtype=torch.complex64)
     e[tau] = 1.0
     return e
 
 
-def create_transmit_matrix(s_k, L):
-    """ """
+def create_transmit_matrix(s_k: torch.Tensor, L: int):
+    """
+    Create transmit matrix with symbols s_k and channel length L.
+
+    :param s_k: Vector of transmit symbols
+    :param L: Maximum channel length
+    """
     cols = s_k.shape[0] - (2 * L - 1)
     rows = 2 * L
     S_k = torch.as_strided(s_k[: cols * rows], (cols, rows), (1, 1)).flip(dims=(1,)).T
     return S_k
 
 
-def pad_transmit_vector(s):
+def pad_transmit_vector(s: torch.Tensor):
+    """
+    Add padding to the transmit vector.
+
+    :param s: Transmit vector to be padded by 100 zeros on each side.
+    """
     return torch.nn.functional.pad(s, (100, 100), "constant", 0)
 
 
-def h2H(h):
+def h2H(h: torch.Tensor):
+    """
+    Create compound H matrix from MIMO impulse responses.
+
+    This compound H matrix consists of the expanded matrices in time domain using
+    the Toeplitz form, then the matrices are stored accordingly in the compound matrix
+    tensor.
+    """
     H_compound = torch.zeros(
         (h.shape[0], h.shape[1], h.shape[2], h.shape[3] + 1, h.shape[3] * 2),
         dtype=h.dtype,
@@ -445,13 +490,14 @@ def h2H(h):
 
 def h2f(h, N0):
     """
-    Construct compound H and calculate F with MMSE/ZF
+    Construct compound H and calculate F with MMSE/ZF.
+
     (depending on the setting of N0) and return the filter taps
     for f
+
     :param h: impulse response in time domain h_{t,m,r} for each user/transmit/receive combination
     :param N0: white noise at receiver
     """
-
     H_compound = torch.zeros(
         (h.shape[0], h.shape[1], h.shape[2], h.shape[3] + 1, h.shape[3] * 2),
         dtype=h.dtype,
@@ -489,7 +535,13 @@ def h2f(h, N0):
     return F_split
 
 
-def find_start_offset(signal, pilot_signal):
+def find_start_offset(signal: torch.Tensor, pilot_signal: torch.Tensor):
+    """
+    Find the start offset using a pilot_signal with correlation.
+
+    :param signal: received signal to find pilot sequence in
+    :param pilot_signal: pilot sequence to search for
+    """
     cross_corr = torch.stack(
         (
             convolve_overlap_save(
