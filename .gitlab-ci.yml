@@ -1,0 +1,73 @@
+stages:
+  - .pre
+
+default:
+  tags:
+    - cel-runner
+
+pre-commit:
+  stage: .pre
+  rules:
+    - if: '$PRE_COMMIT_SKIP_BRANCH_PIPELINE && $CI_COMMIT_BRANCH'
+      when: never
+    - if: '$PRE_COMMIT_SKIP_MR_PIPELINE && $CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: never
+    - if: '$PRE_COMMIT_AUTO_FIX_BRANCH_ONLY && $CI_PIPELINE_SOURCE == "merge_request_event"'
+      variables:
+        PRE_COMMIT_AUTO_FIX: ""
+      when: on_success
+      exists:
+        - .pre-commit-config.yaml
+    - if: '$PRE_COMMIT_DEDUPLICATE_MR_AND_BRANCH == "true" && $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$PRE_COMMIT_AUTO_FIX_MR_ONLY && $CI_PIPELINE_SOURCE != "merge_request_event"'
+      variables:
+        PRE_COMMIT_AUTO_FIX: ""
+      exists:
+        - .pre-commit-config.yaml
+      when: on_success
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_EVENT_TYPE != "detached"'
+      variables:  # we don't support autofix for merged_result or merge_train pipelines, configure branch fixing instead
+        PRE_COMMIT_AUTO_FIX: ""
+      exists:
+        - .pre-commit-config.yaml
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      exists:
+        - .pre-commit-config.yaml
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH'
+      exists:
+        - .pre-commit-config.yaml
+      when: on_success
+    - when: never
+
+  variables:
+    PRE_COMMIT_AUTO_FIX: "1"
+    PRE_COMMIT_DEDUPLICATE_MR_AND_BRANCH: "true"
+
+  image: python:3.12
+  before_script: |
+    - apt update && apt install -y --no-install-recommends git && rm -f /var/cache/apt/archives/*.deb /var/cache/apt/archives/partial/*.deb /var/cache/apt/*.bin || true
+    - pip install --no-cache-dir pre-commit
+
+  script: |
+    if [[ -n "$PRE_COMMIT_AUTO_FIX_BRANCH_ONLY" && -n "$PRE_COMMIT_AUTO_FIX_MR_ONLY" ]]; then
+        echo "invalid configuration. PRE_COMMIT_AUTO_FIX_BRANCH_ONLY and PRE_COMMIT_AUTO_FIX_MR_ONLY are mutually exclusive"
+        exit 1
+    fi
+
+    if [[ $PRE_COMMIT_DEBUG ]]; then
+        set -x
+        echo "DEBUGGING ENABLED" > /dev/stderr
+    fi
+
+    status=0
+    pre-commit run --all-files || status=$?
+    if [[ -n "$PRE_COMMIT_DEBUG" ]]; then
+        git status
+    fi
+    if [[ $status -ne 0 ]]; then
+        exit 1 # fail the job
+    else
+        exit 0  # we're all good, pipeline can proceed
+    fi
