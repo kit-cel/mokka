@@ -46,8 +46,8 @@ pre-commit:
 
   image: python:3.12
   before_script: |
-    - apt update && apt install -y --no-install-recommends git && rm -f /var/cache/apt/archives/*.deb /var/cache/apt/archives/partial/*.deb /var/cache/apt/*.bin || true
-    - pip install --no-cache-dir pre-commit
+    apt update && apt install -y --no-install-recommends git && rm -f /var/cache/apt/archives/*.deb /var/cache/apt/archives/partial/*.deb /var/cache/apt/*.bin || true
+    pip install --no-cache-dir pre-commit
 
   script: |
     if [[ -n "$PRE_COMMIT_AUTO_FIX_BRANCH_ONLY" && -n "$PRE_COMMIT_AUTO_FIX_MR_ONLY" ]]; then
@@ -75,7 +75,7 @@ pytest:
   stage: test
   image: python:3.12
   before_script: |
-    - pip install -e ".[all]"
+    pip install -e ".[all]"
 
   script: |
-    - pytest tests/
+    pytest tests/
