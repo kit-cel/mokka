@@ -61,6 +61,9 @@ dev = [
 remotelog = [
     "wandb",
 ]
+all = [
+   "mokka[torch,tf,dev,remotelog]",
+]
 
 [tool.pytest.ini_options]
 addopts = [
