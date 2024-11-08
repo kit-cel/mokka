@@ -1,12 +1,12 @@
 stages:
-  - .pre
+  - formatting
 
 default:
   tags:
     - cel-runner
 
 pre-commit:
-  stage: .pre
+  stage: formatting
   rules:
     - if: '$PRE_COMMIT_SKIP_BRANCH_PIPELINE && $CI_COMMIT_BRANCH'
       when: never
