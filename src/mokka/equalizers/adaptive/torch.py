@@ -1,7 +1,4 @@
-"""
-PyTorch implementations of adaptive equalizers.
-
-"""
+"""PyTorch implementations of adaptive equalizers."""
 from ..torch import Butterfly2x2
 from ..torch import correct_start_polarization, correct_start, find_start_offset
 from ...functional.torch import convolve_overlap_save
@@ -15,9 +12,7 @@ from collections import namedtuple
 
 
 class CMA(torch.nn.Module):
-    """
-    Perform CMA equalization
-    """
+    """Class to perform CMA equalization."""
 
     butterfly_filter: Butterfly2x2
 
@@ -32,6 +27,19 @@ class CMA(torch.nn.Module):
         no_singularity=False,
         singularity_length=3000,
     ):
+        """
+        Initialize :py:class:`CMA`.
+
+        :param R: constant modulus radius
+        :param sps: samples per symbol
+        :param lr: learning rate
+        :param butterfly_filter: Optional :py:class:`mokka.equalizers.torch.Butterfly2x2` object
+        :param filter_length: butterfly filter length (if object is not given)
+        :param block_size: Number of symbols to process before updating the equalizer taps
+        :param no_singularity: Initialize the x- and y-polarization to avoid singularity by decoding
+                               the signal from the same polarization twice.
+        :param singularity_length: Delay for initialization with the no_singularity approach
+        """
         super(CMA, self).__init__()
         self.register_buffer("R", torch.as_tensor(R))
         self.register_buffer("sps", torch.as_tensor(sps))
@@ -55,6 +63,7 @@ class CMA(torch.nn.Module):
             self.butterfly_filter.taps[3, :] = 0
 
     def reset(self):
+        """Reset equalizer and butterfly filters."""
         self.butterfly_filter = Butterfly2x2(num_taps=self.filter_length.item())
         self.butterfly_filter.taps[0, self.filter_length.item() // 2] = 1.0
         self.butterfly_filter.taps[2, self.filter_length.item() // 2] = 1.0
@@ -63,6 +72,11 @@ class CMA(torch.nn.Module):
             self.butterfly_filter.taps[3, :] = 0
 
     def forward(self, y):
+        """
+        Perform CMA equalization on input signal y.
+
+        :param y: input signal y
+        """
         # Implement CMA "by hand"
         # Basically step through the signal advancing always +sps symbols
         # and filtering 2*filter_len samples which will give one output sample with mode "valid"
@@ -125,6 +139,7 @@ class CMA(torch.nn.Module):
         return out
 
     def get_error_signal(self):
+        """Return error signal used to adapt equalizer taps."""
         return self.out_e
 
 
@@ -244,115 +259,14 @@ def ELBO_DP(
 ##############################################################################################
 
 
-def ELBO_DP_IQ(y, q, sps, amp_levels, h_est, p_amps=None):
-    """
-    Calculate dual-pol. ELBO loss for arbitrary complex constellations.
-
-    Instead of splitting into in-phase and quadrature we can just
-    the whole thing.
-    This implements the dual-polarization case.
-    """
-    # Input is a sequence y of length N
-    N = y.shape[1]
-    h = h_est
-    pol = 2  # dual-polarization
-    # Now we have two polarizations in the first dimension
-    # We assume the same transmit constellation for both, calculating
-    # q needs to be shaped 2 x N x M  -> for each observation on each polarization we have M q-values
-    # we have M constellation symbols
-    L = h.shape[-1]
-    L_offset = (L - 1) // 2
-    if p_amps is None:
-        p_amps = torch.ones_like(amp_levels) / amp_levels.shape[0]
-
-    # # Precompute E_Q{c} = sum( q * c) where c is x and |x|**2
-    E_Q_x = torch.zeros(2, 2, N, device=q.device, dtype=torch.float32)
-    Var = torch.zeros(2, N, device=q.device, dtype=torch.float32)
-    num_lev = amp_levels.shape[0]
-    E_Q_x[:, 0, ::sps] = torch.sum(
-        q[:, :, :num_lev] * amp_levels.unsqueeze(0).unsqueeze(0), dim=-1
-    )  # .permute(0,2,1)
-    E_Q_x[:, 1, ::sps] = torch.sum(
-        q[:, :, num_lev:] * amp_levels.unsqueeze(0).unsqueeze(0), dim=-1
-    )  # .permute(0,2,1)
-    Var[:, ::sps] = torch.add(  # Precompute E_Q{|x|^2}
-        torch.sum(
-            q[:, :, :num_lev] * (amp_levels**2).unsqueeze(0).unsqueeze(0), dim=-1
-        ),
-        torch.sum(
-            q[:, :, num_lev:] * (amp_levels**2).unsqueeze(0).unsqueeze(0), dim=-1
-        ),
-    )
-    Var[:, ::sps] -= torch.sum(E_Q_x[:, :, ::sps] ** 2, dim=1)
-    p_amps = p_amps.repeat(2)
-
-    h_absq = torch.sum(h**2, dim=2)
-
-    D_real = torch.zeros(2, N - 2 * L_offset, device=q.device, dtype=torch.float32)
-    D_imag = torch.zeros(2, N - 2 * L_offset, device=q.device, dtype=torch.float32)
-    E = torch.zeros(2, device=q.device, dtype=torch.float32)
-    idx = torch.arange(2 * L_offset, N)
-    nm = idx.shape[0]
-
-    for j in range(2 * L_offset + 1):  # h[chi,nu,c,k]
-        D_real += (
-            h[:, 0, 0:1, j].expand(-1, nm) * E_Q_x[0, 0:1, idx - j].expand(pol, -1)
-            - h[:, 0, 1:2, j].expand(-1, nm) * E_Q_x[0, 1:2, idx - j].expand(pol, -1)
-            + h[:, 1, 0:1, j].expand(-1, nm) * E_Q_x[1, 0:1, idx - j].expand(pol, -1)
-            - h[:, 1, 1:2, j].expand(-1, nm) * E_Q_x[1, 1:2, idx - j].expand(pol, -1)
-        )
-        D_imag += (
-            h[:, 0, 1:2, j].expand(-1, nm) * E_Q_x[0, 0:1, idx - j].expand(pol, -1)
-            + h[:, 0, 0:1, j].expand(-1, nm) * E_Q_x[0, 1:2, idx - j].expand(pol, -1)
-            + h[:, 1, 1:2, j].expand(-1, nm) * E_Q_x[1, 0:1, idx - j].expand(pol, -1)
-            + h[:, 1, 0:1, j].expand(-1, nm) * E_Q_x[1, 1:2, idx - j].expand(pol, -1)
-        )
-        Var_sum = torch.sum(Var[:, idx - j], dim=-1)
-        E += h_absq[:, 0, j] * Var_sum[0] + h_absq[:, 1, j] * Var_sum[1]
-
-    # Term A - sum all the things, but spare the first dimension, since the two polarizations
-    # are sorta independent
-    bias = 1e-14
-    A = torch.sum(
-        q[:, L_offset:-L_offset, :]
-        * torch.log(
-            (q[:, L_offset:-L_offset, :] / p_amps.unsqueeze(0).unsqueeze(0)) + bias
-        ),
-        dim=(1, 2),
-    )  # Limit the length of y to the "computable space" because y depends on more past values than given
-    # We try to generate the received symbol sequence with the estimated symbol sequence
-    C = torch.sum(
-        y[:, L_offset:-L_offset].real ** 2 + y[:, L_offset:-L_offset].imag ** 2, axis=1
-    )
-    C += (
-        -2
-        * torch.sum(
-            y[:, L_offset:-L_offset].real * D_real
-            + y[:, L_offset:-L_offset].imag * D_imag,
-            dim=1,
-        )
-        + torch.sum(D_real**2 + D_imag**2, dim=1)
-        + E
-    )
-
-    # We compute B without constants
-    # B_tilde = -N * torch.log(C)
-    loss = torch.sum(A) + (N - L + 1) * torch.sum(torch.log(C + 1e-8))  # / sps
-    var = C / (N - L + 1)  # * sps
-    return loss, var
-
-
-##############################################################################################
-
-
 class VAE_LE_DP(torch.nn.Module):
     """
     Adaptive Equalizer based on the variational autoencoder principle with a linear equalizer.
 
     This code is based on the work presented in [1].
 
-    [1] V. Lauinger, F. Buchali, and L. Schmalen, ‘Blind equalization and channel estimation in coherent optical communications using variational autoencoders’, IEEE Journal on Selected Areas in Communications, vol. 40, no. 9, pp. 2529–2539, Sep. 2022, doi: 10.1109/JSAC.2022.3191346.
-
+    [1] V. Lauinger, F. Buchali, and L. Schmalen, ‘Blind equalization and channel estimation in coherent optical communications using variational autoencoders’,
+    IEEE Journal on Selected Areas in Communications, vol. 40, no. 9, pp. 2529–2539, Sep. 2022, doi: 10.1109/JSAC.2022.3191346.
     """
 
     def __init__(
@@ -368,6 +282,24 @@ class VAE_LE_DP(torch.nn.Module):
         var_from_estimate=False,
         num_block_train=None,
     ):
+        """
+        Initialize :py:class:`VAE_LE_DP`.
+
+        This VAE equalizer is implemented with a butterfly linear equalizer in the forward path and a butterfly linear equalizer in
+        the backward pass. Therefore, it is limited to correct impairments of linear channels.
+
+        :param num_taps_forward: number of equalizer taps
+        :param num_taps_backward: number of channel taps
+        :param demapper: mokka demapper object to perform complex symbol demapping
+        :param sps: samples per symbol
+        :param block_size: number of symbols per block - defines the update rate of the equalizer
+        :param lr: learning rate for the adam algorithm
+        :param requires_q:  return q-values in forward call
+        :param IQ_separate: process I and Q separately - requires a demapper which performs demapping on real values
+                            and a bit-mapping which is equal on I and Q.
+        :param var_from_estimate: Update the variance in the demapper from the SNR estimate of the output
+        :param num_block_train: Number of blocks to train the equalizer before switching to non-training equalization mode (for static channels only)
+        """
         super(VAE_LE_DP, self).__init__()
 
         self.register_buffer("block_size", torch.as_tensor(block_size))
@@ -399,6 +331,7 @@ class VAE_LE_DP(torch.nn.Module):
         self.num_block_train = num_block_train
 
     def reset(self):
+        """Reset :py:class:`VAE_LE_DP` object."""
         self.lr = self.start_lr.clone()
         self.butterfly_forward = Butterfly2x2(
             num_taps=self.num_taps_forward.item(),
@@ -418,6 +351,11 @@ class VAE_LE_DP(torch.nn.Module):
 
     @torch.enable_grad()
     def forward(self, y):
+        """
+        Peform equalization of input signal y.
+
+        :param y: Complex input signal
+        """
         # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
@@ -540,224 +478,51 @@ class VAE_LE_DP(torch.nn.Module):
         return torch.cat(out, axis=1)
 
     def update_lr(self, new_lr):
+        """
+        Update learning rate of VAE equalizer.
+
+        :param new_lr: new value of learning rate to be set
+        """
         self.lr = new_lr
         for group in self.optimizer.param_groups:
             group["lr"] = self.lr
 
     def update_var(self, new_var):
+        """
+        Update variance of demapper.
+
+        :param new_var: new value of variance to be set
+        """
         self.demapper.noise_sigma = new_var
 
 
-##############################################################################################
-
-
-class VAE_LE_DP_IQ(torch.nn.Module):
-    """
-    Class that can be dropped in to perform equalization as in ...
-    """
-
-    def __init__(
-        self,
-        num_taps_forward,
-        num_taps_backward,
-        demapper,
-        sps,
-        block_size=200,
-        lr=0.5e-2,
-        requires_q=False,
-        var_from_estimate=False,
-        device="cpu",
-    ):
-        super(VAE_LE_DP_IQ, self).__init__()
-
-        self.register_buffer("block_size", torch.as_tensor(block_size))
-        self.register_buffer("sps", torch.as_tensor(sps))
-        self.register_buffer("start_lr", torch.as_tensor(lr))
-        self.register_buffer("lr", torch.as_tensor(lr))
-        self.register_buffer("num_taps_forward", torch.as_tensor(num_taps_forward))
-        self.register_buffer("num_taps_backward", torch.as_tensor(num_taps_backward))
-        self.register_buffer("requires_q", torch.as_tensor(requires_q))
-        self.register_buffer("var_from_estimate", torch.as_tensor(var_from_estimate))
-        self.butterfly_forward = Butterfly2x2(
-            num_taps=num_taps_forward, trainable=True, timedomain=True, device=device
-        )
-        pol = 2  # dual-polarization
-        self.h_est = torch.zeros(
-            [pol, pol, 2, num_taps_backward]
-        )  # initialize estimated impulse response
-        (
-            self.h_est[0, 0, 0, num_taps_backward // 2 + 1],
-            self.h_est[1, 1, 0, num_taps_backward // 2 + 1],
-        ) = (1, 1)
-        self.demapper = demapper
-        self.optimizer = torch.optim.Adam(
-            self.butterfly_forward.parameters(),
-            lr=self.start_lr,  # 0.5e-2,
-        )
-        self.optimizer.add_param_group({"params": self.h_est})
-
-        self.optimizer_var = torch.optim.Adam(
-            [self.demapper.noise_sigma],
-            lr=0.5,  # 0.5e-2,
-        )
-
-    def reset(self):
-        self.lr = self.start_lr.clone()
-        self.butterfly_forward = Butterfly2x2(
-            num_taps=self.num_taps_forward.item(),
-            trainable=True,
-            timedomain=True,
-            device=self.butterfly_forward.taps.device,
-        )
-        pol = 2  # dual-polarization
-        self.h_est = torch.zeros(
-            [pol, pol, 2, self.num_taps_backward]
-        )  # initialize estimated impulse response
-        (
-            self.h_est[0, 0, 0, self.num_taps_backward // 2 + 1],
-            self.h_est[1, 1, 0, self.num_taps_backward // 2 + 1],
-        ) = (1, 1)
-        self.optimizer = torch.optim.Adam(
-            self.butterfly_forward.parameters(),
-            lr=self.lr,
-        )
-        self.optimizer.add_param_group({"params": self.h_est})
-
-    def forward(self, y):
-        # We need to produce enough q values on each forward pass such that we can
-        # calculate the ELBO loss in the backward pass & update the taps
-
-        num_samps = y.shape[1]
-        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
-
-        out = []
-        out_q = []
-        # We start our loop already at num_taps  (because we cannot equalize the start)
-        # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
-        # We will process sps * block_size - 2 * num_taps because we will cut out the first and last block
-
-        index_padding = (self.butterfly_forward.num_taps - 1) // 2
-        for i, k in enumerate(
-            range(
-                index_padding,
-                num_samps
-                - index_padding
-                - self.sps
-                * self.block_size,  # Back-off one block-size + filter_overlap from end to avoid overrunning
-                self.sps * self.block_size,
-            )
-        ):
-            # if i % (20000//self.block_size) == 0 and i != 0:
-            # print("Updating learning rate")
-            # self.update_lr(self.lr * 0.5)
-            # logger.debug("VAE LE block: %s", i)
-            in_index = torch.arange(
-                k - index_padding,
-                k + self.sps * self.block_size + index_padding,
-            )
-            # Equalization will give sps * block_size samples (because we add (num_taps - 1) in the beginning)
-            y_hat = self.butterfly_forward(y[:, in_index], "valid")
-
-            # We downsample so we will have floor(((sps * block_size - num_taps + 1) / sps) = floor(block_size - (num_taps - 1)/sps)
-            y_symb = y_hat[
-                :, 0 :: self.sps
-            ]  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
-
-            q_hat = torch.cat(
-                (
-                    torch.cat(
-                        (
-                            self.demapper(y_symb[0, :].real).unsqueeze(0),
-                            self.demapper(y_symb[0, :].imag).unsqueeze(0),
-                        ),
-                        axis=-1,
-                    ),
-                    torch.cat(
-                        (
-                            self.demapper(y_symb[1, :].real).unsqueeze(0),
-                            self.demapper(y_symb[1, :].imag).unsqueeze(0),
-                        ),
-                        axis=-1,
-                    ),
-                ),
-                axis=0,
-            )
-
-            # We calculate the loss with less symbols, since the forward operation with "valid"
-            # is missing some symbols
-            # We assume the symbol of interest is at the center tap of the filter
-            y_index = in_index[
-                (self.butterfly_forward.num_taps - 1)
-                // 2 : -((self.butterfly_forward.num_taps - 1) // 2)
-            ]
-            loss, var = ELBO_DP_IQ(
-                # loss, var = ELBO_DP(
-                y[:, y_index],
-                q_hat,
-                self.sps,
-                self.demapper.constellation,
-                self.h_est,
-                p_amps=self.demapper.p_symbols
-                # p_constellation=self.demapper.p_symbols
-            )
-
-            # print("noise_sigma: ", self.demapper.noise_sigma)
-            # print(loss)
-            loss.backward()
-            self.optimizer.step()
-            # self.optimizer_var.step()
-            self.optimizer.zero_grad()
-            # self.optimizer_var.zero_grad()
-
-            if self.var_from_estimate == True:
-                self.demapper.noise_sigma = torch.clamp(
-                    torch.mean(var.detach().clone()),
-                    min=torch.tensor(0.05, requires_grad=False, device=q_hat.device),
-                    max=2
-                    * self.demapper.noise_sigma.detach().clone(),  # torch.sqrt(var).detach()), min=0.1
-                )
-
-            output_symbols = y_symb[
-                :, : self.block_size
-            ]  # - self.butterfly_forward.num_taps // 2]
-            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
-            out.append(
-                output_symbols
-            )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
-
-            output_q = q_hat[:, : self.block_size, :]
-            out_q.append(output_q)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
-        if self.requires_q == True:
-            eq_out = namedtuple("eq_out", ["y", "q", "var", "loss"])
-            return eq_out(torch.cat(out, axis=1), torch.cat(out_q, axis=1), var, loss)
-        return torch.cat(out, axis=1)
-
-    def update_lr(self, new_lr):
-        self.lr = new_lr
-        for group in self.optimizer.param_groups:
-            group["lr"] = self.lr
-
-    def update_var(self, new_lr):
-        self.lr = new_lr
-        for group in self.optimizer.param_groups:
-            group["lr"] = self.lr
-
-
 def update_adaptive(y_hat_sym, pilot_seq, regression_seq, idx, length, sps):
+    """
+    Calculate update signal to be used to update adaptive equalizer taps.
+
+    :param y_hat_sym: Estimated receive symbol sequence
+    :param pilot_seq: Known pilot symbol sequence
+    :param regression_seq: Regression sequence to be applied to the equalizer taps
+    :param idx: symbol index to use for calculation of the error signal
+    :param length: Not used in this function, just for API compatibility reasons
+    :param sps: Not used in this function, just for API compatibility reasons
+    """
     e_k = pilot_seq[idx] - y_hat_sym[idx]
     # idx_up = idx * sps
 
     # print("Using regression sequence at indices: ", idx_up, " to ", idx_up + length)
-    result = e_k * torch.flip(
-        regression_seq.conj().resolve_conj(), dims=(0,)
-    )
+    result = e_k * torch.flip(regression_seq.conj().resolve_conj(), dims=(0,))
     return result, e_k
 
 
 class PilotAEQ_DP(torch.nn.Module):
     """
-    Perform pilot-based adaptive equalization (QPSK)
+    Perform pilot-based adaptive equalization.
+
+    This class performs equalization on a dual polarization signal with a known dual polarization
+    pilot sequence. The equalization is performed either with the LMS method, ZF method or a
+    novel LMSZF method which combines the regression vectors of LMS and ZF to improve stability
+    and channel estimation properties.
     """
 
     def __init__(
@@ -777,6 +542,24 @@ class PilotAEQ_DP(torch.nn.Module):
         preeq_lradjust=1.0,
         lmszf_weight=0.5,
     ):
+        """
+        Initialize :py:class:`PilotAEQ_DP`.
+
+        :param sps: samples per symbol
+        :param lr: learning rate to update adaptive equalizer taps
+        :param pilot_sequence: Known dual polarization pilot sequence
+        :param pilot_sequence_up: Upsampled dual polarization pilot sequence
+        :param butterfly_filter: :py:class:`mokka.equalizers.torch.Butterfly2x2` object
+        :param filter_length: If a butterfly_filter argument is not provided the filter length to initialize
+                              the butterfly filter.
+        :param method: adaptive update method for the equalizer filter taps
+        :param block_size: number of symbols to process before each update step
+        :param adaptive_lr: Adapt learning rate during simulation
+        :param preeq_method: Use a different method to perform a first-stage equalization
+        :param preeq_offset: Length of first-stage equalization
+        :param preeq_lradjust: Change learning rate by this factor for first-stage equalization
+        :param lmszf_weight: if LMSZF is used as equalization method the weight between ZF and LMS update algorithms.
+        """
         super(PilotAEQ_DP, self).__init__()
         self.register_buffer("sps", torch.as_tensor(sps))
         self.register_buffer("lr", torch.as_tensor(lr))
@@ -803,6 +586,7 @@ class PilotAEQ_DP(torch.nn.Module):
         self.lmszf_weight = torch.as_tensor(lmszf_weight)
 
     def reset(self):
+        """Reset :py:class:`PilotAEQ_DP` object."""
         self.butterfly_filter = Butterfly2x2(num_taps=self.filter_length.item())
         self.butterfly_filter.taps[0, self.filter_length.item() // 2] = 1.0
         self.butterfly_filter.taps[2, self.filter_length.item() // 2] = 1.0
@@ -879,7 +663,9 @@ class PilotAEQ_DP(torch.nn.Module):
                     if self.method == "LMS":
                         regression_seq = y_cut.clone()
                     elif self.method in ("ZF", "ZFadv"):
-                        regression_seq = self.pilot_sequence_up.clone().conj().resolve_conj()
+                        regression_seq = (
+                            self.pilot_sequence_up.clone().conj().resolve_conj()
+                        )
                     elif self.method == "LMSZF":
                         regression_seq = (
                             torch.sqrt(torch.as_tensor(self.lmszf_weight))
