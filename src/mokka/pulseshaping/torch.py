@@ -457,7 +457,9 @@ def upsample(n_up, signal, filter_length=501, filter_gain=1):
     return signal_up
 
 
-def downsample(n_down, signal, filter_length=501, filter_gain=1, window="blackmann_harris"):
+def downsample(
+    n_down, signal, filter_length=501, filter_gain=1, window="blackmann_harris"
+):
     """Perform downsampling on signal.
 
     :param n_down: downsampling factor
