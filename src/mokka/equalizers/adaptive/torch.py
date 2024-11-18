@@ -592,6 +592,11 @@ class PilotAEQ_DP(torch.nn.Module):
         self.butterfly_filter.taps[2, self.filter_length.item() // 2] = 1.0
 
     def forward(self, y):
+        """
+        Equalize input signal y
+
+        :param y: Complex receive signal y
+        """
         # y_cut is perfectly aligned with pilot_sequence_up (after cross correlation & using peak)
         # The adaptive filter should be able to correct polarization flip on its own
         y_cut = correct_start_polarization(
@@ -837,6 +842,16 @@ class PilotAEQ_SP(torch.nn.Module):
         filter_length=31,
         method="LMS",
     ):
+        """
+        Initialize :py:class:`PilotAEQ_SP`.
+
+        Pilot-based adaptive equalizer for the single polarization case.
+
+        :param sps: samples per symbol
+        :param lr: learning rate of adaptive equalizer update
+        :param pilot_sequence: known transmit pilot sequence
+        :param pilot_sequence_up: upsampled known transmit pilot sequence
+        """
         super(PilotAEQ_SP, self).__init__()
         self.register_buffer("sps", torch.as_tensor(sps))
         self.register_buffer("lr", torch.as_tensor(lr))
@@ -850,10 +865,16 @@ class PilotAEQ_SP(torch.nn.Module):
         self.method = method
 
     def reset(self):
+        """Reset :py:class:`PilotAEQ_SP`"""
         self.taps.zero_()
         self.taps[self.taps.size()[0] // 2] = 1.0
 
     def forward(self, y):
+        """
+        Equalize a single polarization signal.
+
+        :param y: complex single polarization received signal
+        """
         y_cut = correct_start(y, self.pilot_sequence_up)
 
         equalizer_length = self.taps.size()[0]
@@ -908,11 +929,7 @@ class PilotAEQ_SP(torch.nn.Module):
 
 
 class AEQ_SP(torch.nn.Module):
-    """
-    Perform CMA equalization
-    """
-
-    taps: torch.Tensor
+    """Class to perform CMA equalization for a single polarization signal."""
 
     def __init__(
         self,
@@ -924,6 +941,17 @@ class AEQ_SP(torch.nn.Module):
         block_size=1,
         no_singularity=False,
     ):
+        """
+        Initialize :py:class:`AEQ_SP`.
+
+        :param R: average radio/kurtosis of constellation
+        :param sps: samples per symbol
+        :param lr: learning rate of adaptive update algorithm
+        :param taps: Initial equalizer taps
+        :param filter_length: length of equalizer if not provided as object
+        :param block_size: number of symbols per update step
+        :param no_singularity: Not used for the single polarization case
+        """
         super(AEQ_SP, self).__init__()
         self.register_buffer("R", torch.as_tensor(R))
         self.register_buffer("sps", torch.as_tensor(sps))
