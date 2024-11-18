@@ -1768,6 +1768,7 @@ class PMDPDLChannel(torch.nn.Module):
         pdl_max=0.8,
         pdl_min=0.1,
         method="freq",
+        trainable=False,
     ):
         """
         Initialize :py:class:`PMDPDLChannel`.
