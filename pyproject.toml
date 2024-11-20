@@ -1,68 +1,58 @@
 [build-system]
-requires = [
-    "flit_core",
-    "wheel",
-    "oldest-supported-numpy",
-]
-build-backend = "flit_core.buildapi"
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
 
-[project]
+[tool.poetry]
 name = "mokka"
 readme = "README.md"
-requires-python = ">=3.9"
-license = {file = "COPYING"}
+license = "Apache-2.0"
 authors = [
-    {name = "Andrej Rode", email = "rode@kit.edu"},
-    {name = "Shrinivas Chimmalgi", email="shrinivas.chimmalgi@kit.edu"},
-    {name = "Benedikt Geiger", email="benedikt.geiger@kit.edu"},
-    {name = "Laurent Schmalen", email="laurent.schmalen@kit.edu"},
+    "Andrej Rode <rode@kit.edu>",
+    "Shrinivas Chimmalgi <shrinivas.chimmalgi@kit.edu>",
+    "Benedikt Geiger <benedikt.geiger@kit.edu>",
+    "Laurent Schmalen <laurent.schmalen@kit.edu>",
 ]
 maintainers = [
-    {name = "Andrej Rode", email = "rode@kit.edu"},
-    {name = "Shrinivas Chimmalgi", email="shrinivas.chimmalgi@kit.edu"},
-    {name = "Benedikt Geiger", email="benedikt.geiger@kit.edu"},
+    "Andrej Rode <rode@kit.edu>",
+    "Shrinivas Chimmalgi <shrinivas.chimmalgi@kit.edu>",
+    "Benedikt Geiger <benedikt.geiger@kit.edu>",
 ]
 
-dependencies = [
-  "attrs",
-  "numpy",
-  "torch",
-  "matplotlib",
-  "scipy",
-  "pyqtgraph",
-  "jaxtyping",
-]
 version = "1.0.1"
 description = "A machine learning toolbox for communications engineering"
 keywords = ["communications engineering", "machine learning"]
 # dynamic = ["version", "description"]
 
-[project.optional-dependencies]
-torch = [
-    "torch",
-    "torchaudio",
-]
+[tool.poetry.dependencies]
+python = "^3.10"
+attrs = "^23.2.0"
+numpy = "^1.26.4"
+torch = "^2.5.1"
+torchaudio = "^2.5.1"
+matplotlib = "^3.9.2"
+scipy = "^1.13.1"
+pyqtgraph = "^0.13.7"
+jaxtyping = "^0.2.36"
+
+[tool.poetry.group.dev.dependencies]
+pre-commit = "*"
+pytest = "*"
+black = "*"
+flake8 = "*"
+pylint = "*"
+python-lsp-server = {version = "*", extras = ["all"]}
+pyls-flake8 = "*"
+python-lsp-black = "*"
+sphinx = "*"
+sphinx-pyproject = "*"
+sphinx_rtd_theme = "*"
+
+[tool.poetry.extras]
 tf = [
     "sionna"
 ]
-dev = [
-    "pre-commit",
-    "pytest",
-    "black",
-    "flake8",
-    "pylint",
-    "python-lsp-server[all]",
-    "pyls-flake8",
-    "python-lsp-black",
-    "sphinx",
-    "sphinx-pyproject",
-    "sphinx_rtd_theme"
-]
 remotelog = [
     "wandb",
-]
-all = [
-   "mokka[torch,tf,dev,remotelog]",
 ]
 
 [tool.pytest.ini_options]
@@ -127,9 +117,10 @@ skip_missing_interpreters = False
 
 [gh-actions]
 python =
-    3.9: py39
     3.10: flake8, black, pydocstyle, py310
     3.11: py311
+    3.12: py312
+    3.13d py313
 
 [testenv]
 # install pytest in the virtualenv where commands will be executed
