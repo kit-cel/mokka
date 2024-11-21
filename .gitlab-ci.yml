@@ -77,6 +77,7 @@ pytest:
   before_script: |
     pip install --no-cache-dir poetry
     poetry install --all-extras --with=dev
+    source `poetry env info --path`/bin/activate
 
   script: |
     pytest tests/
