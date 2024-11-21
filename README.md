@@ -8,23 +8,14 @@ Most of the functionality currently is provided for the PyTorch machine learning
 
 ## Prerequisites
 
-This package works best if it is installed in a Python virtualenvironment, either provided by `python -m venv` or `conda`.
-To leverage GPU for training with PyTorch and/or latest features of the PyTorch nightly version follow https://pytorch.org/get-started/locally/ to
-install PyTorch from the PyTorch repositories and avoid installing the PyPI provided general-purpose version of PyTorch.
+This package leverages poetry for management of dependencies in a virtual environment. If you clone this repository you can install this package with all
+optional extras with `poetry install --all-extras`. Alternatively check which additional functionalities suit you in [pyproject.toml](./pyproject.toml).
 
 ## Installation
 
-To install `mokka` with functionality to work with PyTorch clone this repository and install (in a virtual environment):
-```
-pip install '.[torch]'
-```
-
-Several more optional dependencies are provided to support Sionna (and tensorflow) `[tf]` or for formatting and more development tools `[dev]`.
-The popular machine learning reporting and experiment tracking tool weights & biases can be installed with `[remotelog]`.
-For all possible optional dependencies enabled e.g.:
-```
-pip install '.[torch,tf,dev,remotelog]'
-```
+Either install the package from PyPI with `pip install mokka` or install it from this source directory with the help of poetry `poetry install --all-extras`.
+To install the development dependencies (formatters, documentation checkers, etc.) install mokka with `poetry install --with=dev`.
+Please check the poetry documentation for other commands and usage of poetry [here](https://python-poetry.org/docs/).
 
 ## Usage
 
