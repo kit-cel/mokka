@@ -18,7 +18,7 @@ def test_rrc_matched_filter():
 def test_rrc_awgn_no_normalization():
     sps = 2
     snr = 25
-    num_symbols = 500000
+    num_symbols = 5000000
     bpsk_symbols = (-1) ** torch.randint(0, 2, (num_symbols,))
     bpsk_symbols = bpsk_symbols.to(torch.complex64)
     rrc = pulseshape.PulseShaping.get_rrc_ir(
@@ -39,7 +39,7 @@ def test_rrc_awgn_no_normalization():
 def test_rrc_awgn_normalization():
     sps = 2
     snr = 25
-    num_symbols = 500000
+    num_symbols = 5000000
     bpsk_symbols = (-1) ** torch.randint(0, 2, (num_symbols,))
     bpsk_symbols = bpsk_symbols.to(torch.complex64)
     rrc = pulseshape.PulseShaping.get_rrc_ir(
