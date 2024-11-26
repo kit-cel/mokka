@@ -1,6 +1,6 @@
 """PyTorch implementations of adaptive equalizers."""
 
-from ..torch import Butterfly2x2
+from ..torch import Butterfly2x2, ButterflyNxN
 from ..torch import correct_start_polarization, correct_start
 from ...functional.torch import convolve_overlap_save
 from ..torch import h2f
@@ -263,12 +263,128 @@ def ELBO_DP(
 ##############################################################################################
 
 
-def ELBO_DP_IQ(y, q, sps, amp_levels, h_est, p_amps=None):
+def ELBO_NxN(
+    y,
+    q,
+    sps,
+    constellation_symbols,
+    butterfly_filter,
+    p_constellation=None,
+    IQ_separate=False,
+):
     """
     Calculate dual-pol. ELBO loss for arbitrary complex constellations.
 
     Instead of splitting into in-phase and quadrature we can just
     the whole thing.
+    This implements the dual-polarization case.
+    """
+    # Input is a sequence y of length N
+    N = y.shape[1]
+    num_channels = y.shape[0]
+    # Now we have two polarizations in the first dimension
+    # We assume the same transmit constellation for both, calculating
+    # q needs to be shaped num_channels x N x M  -> for each observation on each polarization we have M q-values
+    # we have M constellation symbols
+    L = butterfly_filter.taps.shape[-1]
+    L_offset = (L - 1) // 2
+    if p_constellation is None:
+        p_constellation = (
+            torch.ones_like(constellation_symbols) / constellation_symbols.shape[0]
+        )
+
+    # # Precompute E_Q{c} = sum( q * c) where c is x and |x|**2
+    E_Q_x = torch.zeros_like(
+        y
+    )  # torch.zeros(2, N, device=q.device, dtype=torch.complex64)
+    E_Q_x_abssq = torch.zeros(
+        num_channels, N, device=y.device, dtype=torch.float32
+    )  # torch.zeros(2, N, device=q.device, dtype=torch.float32)
+    if IQ_separate == True:
+        num_lev = constellation_symbols.shape[0]
+        E_Q_x[:, ::sps] = torch.complex(
+            torch.sum(
+                q[:, :, :num_lev] * constellation_symbols.unsqueeze(0).unsqueeze(0),
+                dim=-1,
+            ),
+            torch.sum(
+                q[:, :, num_lev:] * constellation_symbols.unsqueeze(0).unsqueeze(0),
+                dim=-1,
+            ),
+        )
+        E_Q_x_abssq[:, ::sps] = torch.add(  # Precompute E_Q{|x|^2}
+            torch.sum(
+                q[:, :, :num_lev]
+                * (constellation_symbols**2).unsqueeze(0).unsqueeze(0),
+                dim=-1,
+            ),
+            torch.sum(
+                q[:, :, num_lev:]
+                * (constellation_symbols**2).unsqueeze(0).unsqueeze(0),
+                dim=-1,
+            ),
+        )
+        p_constellation = p_constellation.repeat(2)
+    else:
+        E_Q_x[:, ::sps] = torch.sum(
+            q * constellation_symbols.unsqueeze(0).unsqueeze(0), axis=-1
+        )
+        E_Q_x_abssq[:, ::sps] = torch.sum(
+            q
+            * (constellation_symbols.real**2 + constellation_symbols.imag**2)
+            .unsqueeze(0)
+            .unsqueeze(0),
+            axis=-1,
+        )
+
+    # Term A - sum all the things, but spare the first dimension, since the two polarizations
+    # are sorta independent
+    bias = 1e-14
+    A = torch.sum(
+        q[:, L_offset:-L_offset, :]
+        * torch.log(
+            (q[:, L_offset:-L_offset, :] / p_constellation.unsqueeze(0).unsqueeze(0))
+            + bias
+        ),
+        dim=(1, 2),
+    )
+
+    # Precompute h \ast E_Q{x}
+    h_conv_E_Q_x = butterfly_filter(
+        E_Q_x
+    )  # Due to definition that we assume the symbol is at the center tap we remove (filter_length - 1)//2 at start and end
+    # Limit the length of y to the "computable space" because y depends on more past values than given
+    # We try to generate the received symbol sequence with the estimated symbol sequence
+    C = torch.sum(
+        y[:, L_offset:-L_offset].real ** 2 + y[:, L_offset:-L_offset].imag ** 2, axis=1
+    )
+    C -= 2 * torch.sum(y[:, L_offset:-L_offset].conj() * h_conv_E_Q_x, axis=1).real
+    C += torch.sum(
+        h_conv_E_Q_x.real**2
+        + h_conv_E_Q_x.imag**2
+        + butterfly_filter.forward_abssquared(
+            (E_Q_x_abssq - torch.abs(E_Q_x) ** 2).to(torch.float32)
+        ),
+        axis=1,
+    )
+
+    # We compute B without constants
+    # B_tilde = -N * torch.log(C)
+    # bias1 = 1e-8
+    loss = torch.sum(A) + (N - L + 1) * torch.sum(torch.log(C + bias))  # / sps
+    var = C / (N - L + 1)  # * sps #N
+    return loss, var
+
+
+##############################################################################################
+##############################################################################################
+
+
+def ELBO_DP_IQ(y, q, sps, amp_levels, h_est, p_amps=None):
+    """
+    Calculate dual-pol. ELBO loss for I/Q-symmetric constellations by splitting the calculation in two real-valued paths for I/Q separately.
+
+    Instead of calculation in the complex domain, it is split in two real-valued vectors for separate calculation of I/Q.
     This implements the dual-polarization case.
     """
     # Input is a sequence y of length N
@@ -604,7 +720,8 @@ class VAE_LE_DP(torch.nn.Module):
 
 class VAE_LE_DP_IQ(torch.nn.Module):
     """
-    Class that can be dropped in to perform equalization as in ...
+    Class that can be dropped in to perform equalization as in:
+    V. Lauinger, F. Buchali and L. Schmalen, "Blind equalization and channel estimation in coherent optical communications using variational autoencoders," IEEE J. Sel. Areas Commun., vol. 40, no. 9, pp. 2529-2539, Sep. 2022.
     """
 
     def __init__(
@@ -748,7 +865,7 @@ class VAE_LE_DP_IQ(torch.nn.Module):
                 self.sps,
                 self.demapper.constellation,
                 self.h_est,
-                p_amps=self.demapper.p_symbols,
+                p_amps=self.demapper.p_symbols
                 # p_constellation=self.demapper.p_symbols
             )
 
@@ -822,6 +939,623 @@ def update_adaptive(y_hat_sym, pilot_seq, regression_seq, idx, length, sps):
     # print("Using regression sequence at indices: ", idx_up, " to ", idx_up + length)
     result = e_k * torch.flip(regression_seq.conj().resolve_conj(), dims=(0,))
     return result, e_k
+
+##############################################################################################
+##############################################################################################
+
+
+class VAE_LE_NxN(torch.nn.Module):
+    """
+    Class that can be dropped in to perform equalization
+    """
+
+    def __init__(
+        self,
+        num_channels,
+        num_taps_forward,
+        num_taps_backward,
+        demapper,
+        sps,
+        block_size=200,
+        lr=0.5e-2,
+        requires_q=False,
+        IQ_separate=False,
+        var_from_estimate=False,
+        device="cpu",
+        mode="valid",
+    ):
+        super(VAE_LE_NxN, self).__init__()
+
+        self.register_buffer("block_size", torch.as_tensor(block_size))
+        self.register_buffer("sps", torch.as_tensor(sps))
+        self.register_buffer("start_lr", torch.as_tensor(lr))
+        self.register_buffer("lr", torch.as_tensor(lr))
+        self.register_buffer("num_channels", torch.as_tensor(num_channels))
+        self.register_buffer("num_taps_forward", torch.as_tensor(num_taps_forward))
+        self.register_buffer("num_taps_backward", torch.as_tensor(num_taps_backward))
+        self.register_buffer("requires_q", torch.as_tensor(requires_q))
+        self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
+        self.register_buffer("var_from_estimate", torch.as_tensor(var_from_estimate))
+        self.mode = mode
+        self.butterfly_forward = ButterflyNxN(
+            num_taps=num_taps_forward,
+            num_channels=num_channels,
+            trainable=True,
+            timedomain=True,
+            device=device,
+            mode=mode,
+        )
+        self.butterfly_backward = ButterflyNxN(
+            num_taps=num_taps_backward,
+            num_channels=num_channels,
+            trainable=True,
+            timedomain=True,
+            device=device,
+            mode=mode,
+        )
+        self.demapper = demapper
+        self.optimizer = torch.optim.Adam(
+            self.butterfly_forward.parameters(),
+            lr=self.start_lr,  # 0.5e-2,
+        )
+        self.optimizer.add_param_group({"params": self.butterfly_backward.parameters()})
+
+        self.optimizer_var = torch.optim.Adam(
+            [self.demapper.noise_sigma],
+            lr=0.5,  # 0.5e-2,
+        )
+
+    def reset(self):
+        self.lr = self.start_lr.clone()
+        self.butterfly_forward = ButterflyNxN(
+            num_taps=self.num_taps_forward.item(),
+            num_channels=self.num_channels,
+            trainable=True,
+            timedomain=True,
+            device=self.butterfly_forward.taps.device,
+            mode=self.mode,
+        )
+        self.butterfly_backward = ButterflyNxN(
+            num_taps=self.num_taps_backward.item(),
+            num_channels=self.num_channels.item(),
+            trainable=True,
+            timedomain=True,
+            device=self.butterfly_forward.taps.device,
+            mode=self.mode,
+        )
+        self.optimizer = torch.optim.Adam(
+            self.butterfly_forward.parameters(),
+            lr=self.lr,
+        )
+        self.optimizer.add_param_group({"params": self.butterfly_backward.parameters()})
+
+    def forward(self, y):
+        # We need to produce enough q values on each forward pass such that we can
+        # calculate the ELBO loss in the backward pass & update the taps
+
+        num_samps = y.shape[1]
+        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
+
+        out = []
+        out_q = []
+        # We start our loop already at num_taps  (because we cannot equalize the start)
+        # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
+        # We will process sps * block_size - 2 * num_taps because we will cut out the first and last block
+
+        index_padding = (self.butterfly_forward.num_taps - 1) // 2
+        for i, k in enumerate(
+            range(
+                index_padding,
+                num_samps
+                - index_padding
+                - self.sps
+                * self.block_size,  # Back-off one block-size + filter_overlap from end to avoid overrunning
+                self.sps * self.block_size,
+            )
+        ):
+            # if i % (20000//self.block_size) == 0 and i != 0:
+            # print("Updating learning rate")
+            # self.update_lr(self.lr * 0.5)
+            # logger.debug("VAE LE block: %s", i)
+            in_index = torch.arange(
+                k - index_padding,
+                k + self.sps * self.block_size + index_padding,
+            )
+            # Equalization will give sps * block_size samples (because we add (num_taps - 1) in the beginning)
+            y_hat = self.butterfly_forward(y[:, in_index])
+
+            # We downsample so we will have floor(((sps * block_size - num_taps + 1) / sps) = floor(block_size - (num_taps - 1)/sps)
+            y_symb = y_hat[
+                :, 0 :: self.sps
+            ]  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
+
+            if self.IQ_separate == True:
+                num_level = self.demapper.constellation.shape[-1]
+                q_hat = torch.zeros(
+                    y_symb.shape[0],
+                    y_symb.shape[1],
+                    2 * num_level,
+                    device=y_symb.device,
+                    dtype=torch.float32,
+                )
+                for out_chan in range(y_symb.shape[0]):
+                    q_hat[out_chan, :, :num_level] = self.demapper(
+                        y_symb[out_chan, :].real
+                    ).unsqueeze(0)
+                    q_hat[out_chan, :, num_level:] = self.demapper(
+                        y_symb[out_chan, :].imag
+                    ).unsqueeze(0)
+            else:
+                q_hat = torch.zeros(
+                    y_symb.shape[0],
+                    y_symb.shape[1],
+                    self.demapper.constellation.shape[-1],
+                    device=y_symb.device,
+                    dtype=torch.float32,
+                )
+                for out_chan in range(y_symb.shape[0]):
+                    q_hat[out_chan, :, :] = self.demapper(
+                        y_symb[out_chan, :]
+                    ).unsqueeze(0)
+
+            # We calculate the loss with less symbols, since the forward operation with "valid"
+            # is missing some symbols
+            # We assume the symbol of interest is at the center tap of the filter
+            y_index = in_index[
+                (self.butterfly_forward.num_taps - 1)
+                // 2 : -((self.butterfly_forward.num_taps - 1) // 2)
+            ]
+            loss, var = ELBO_NxN(
+                # loss, var = ELBO_DP(
+                y[:, y_index],
+                q_hat,
+                self.sps,
+                self.demapper.constellation,
+                self.butterfly_backward,
+                p_constellation=self.demapper.p_symbols,
+                IQ_separate=self.IQ_separate,
+            )
+
+            # print("noise_sigma: ", self.demapper.noise_sigma)
+            loss.backward()
+            self.optimizer.step()
+            # self.optimizer_var.step()
+            self.optimizer.zero_grad()
+            # self.optimizer_var.zero_grad()
+
+            if self.var_from_estimate == True:
+                self.demapper.noise_sigma = torch.clamp(
+                    torch.sqrt(torch.mean(var.detach().clone()) / 2),
+                    min=torch.tensor(0.05, requires_grad=False, device=q_hat.device),
+                    max=2
+                    * self.demapper.noise_sigma.detach().clone(),  # torch.sqrt(var).detach()), min=0.1
+                )
+
+            output_symbols = y_symb[
+                :, : self.block_size
+            ]  # - self.butterfly_forward.num_taps // 2]
+            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
+            out.append(
+                output_symbols
+            )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
+
+            output_q = q_hat[:, : self.block_size, :]
+            out_q.append(output_q)
+
+        # print("loss: ", loss, "\t\t\t var: ", var)
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+
+        if self.requires_q == True:
+            eq_out = namedtuple("eq_out", ["y", "q", "var", "loss"])
+            return eq_out(torch.cat(out, axis=1), torch.cat(out_q, axis=1), var, loss)
+        return torch.cat(out, axis=1)
+
+    def update_lr(self, new_lr):
+        self.lr = new_lr
+        for group in self.optimizer.param_groups:
+            group["lr"] = self.lr
+
+    def update_var(self, new_var):
+        self.demapper.noise_sigma = new_var
+
+
+##############################################################################################
+##############################################################################################
+
+
+def VQVAE_loss_DP(
+    y,
+    q,
+    eq,
+    beta,
+    sps,
+    constellation_symbols,
+    butterfly_filter,
+    IQ_separate=False,
+):
+    """
+    Calculate dual-pol. ELBO loss for arbitrary complex constellations.
+
+    Instead of splitting into in-phase and quadrature we can just
+    the whole thing.
+    This implements the dual-polarization case.
+    """
+    # Input is a sequence y of length N
+    N = y.shape[1]
+    # Now we have two polarizations in the first dimension
+    # We assume the same transmit constellation for both, calculating
+    # q needs to be shaped 2 x N x M  -> for each observation on each polarization we have M q-values
+    # we have M constellation symbols
+    L = butterfly_filter.taps.shape[1]
+    L_offset = (L - 1) // 2
+
+    # # Precompute E_Q{c} = sum( q * c) where c is x and |x|**2
+
+    if IQ_separate == True:
+        num_lev = constellation_symbols.shape[0]
+        dec = torch.complex(
+            constellation_symbols[torch.argmax(q[:, :, :num_lev], dim=-1)],
+            constellation_symbols[torch.argmax(q[:, :, num_lev:], dim=-1)],
+        )
+    else:
+        dec = constellation_symbols[torch.argmax(q, axis=-1)]
+
+    temp_dec = torch.zeros(2, N, device=q.device, dtype=torch.complex64)
+    temp_dec[:, ::sps] = eq + (dec - eq).detach()  # straigth-through gradient
+
+    # Precompute h \ast E_Q{x}
+    Est = butterfly_filter(
+        temp_dec, mode="valid"
+    )  # Due to definition that we assume the symbol is at the center tap we remove (filter_length - 1)//2 at start and end
+    # Limit the length of y to the "computable space" because y depends on more past values than given
+    # We try to generate the received symbol sequence with the estimated symbol sequence
+    recon_loss = torch.mean(torch.abs(y[:, L_offset:-L_offset] - Est) ** 2)
+    commit_loss = torch.mean(torch.abs(dec - eq) ** 2)
+
+    loss = beta / 100 * commit_loss + (100 - beta) / 100 * recon_loss
+    return loss
+
+
+def VQVAE_loss_DP_hard(
+    y,
+    eq,
+    beta,
+    sps,
+    constellation_symbols,
+    bounds,
+    butterfly_filter,
+    IQ_separate=False,
+):
+    """
+    Calculate dual-pol. ELBO loss for I/Q symmetric constellations.
+
+    It splits the signal into in-phase/ quadrature parts and process them separately.
+    It uses hard decision with decision boundaries adapted to prior distribution (p(x)).
+    This implements the dual-polarization case.
+    """
+    # Input is a sequence y of length N
+    N = y.shape[1]
+    # Now we have two polarizations in the first dimension
+    # We assume the same transmit constellation for both, calculating
+    # q needs to be shaped 2 x N x M  -> for each observation on each polarization we have M q-values
+    # we have M constellation symbols
+    L = butterfly_filter.taps.shape[1]
+    L_offset = (L - 1) // 2
+
+    # # Precompute E_Q{c} = sum( q * c) where c is x and |x|**2
+
+    if IQ_separate == True:
+        num_lev = constellation_symbols.shape[0]
+        dec = torch.complex(
+            constellation_symbols[torch.argmax(q[:, :, :num_lev], dim=-1)],
+            constellation_symbols[torch.argmax(q[:, :, num_lev:], dim=-1)],
+        )
+    else:
+        dec = constellation_symbols[torch.argmax(q, axis=-1)]
+
+    temp_dec = torch.zeros(2, N, device=q.device, dtype=torch.complex64)
+    temp_dec[:, ::sps] = eq + (dec - eq).detach()  # straigth-through gradient
+
+    # Precompute h \ast E_Q{x}
+    Est = butterfly_filter(
+        temp_dec, mode="valid"
+    )  # Due to definition that we assume the symbol is at the center tap we remove (filter_length - 1)//2 at start and end
+    # Limit the length of y to the "computable space" because y depends on more past values than given
+    # We try to generate the received symbol sequence with the estimated symbol sequence
+    recon_loss = torch.mean(torch.abs(y[:, L_offset:-L_offset] - Est) ** 2)
+    commit_loss = torch.mean(torch.abs(dec - eq) ** 2)
+
+    loss = beta / 100 * commit_loss + (100 - beta) / 100 * recon_loss
+    return loss
+
+
+##############################################################################################
+
+
+class VQVAE_LE_DP(torch.nn.Module):
+    """
+    Class that can be dropped in to perform equalization
+    """
+
+    def __init__(
+        self,
+        num_taps_forward,
+        num_taps_backward,
+        demapper,
+        sps,
+        block_size=200,
+        lr=0.5e-2,
+        beta=30,
+        requires_q=False,
+        IQ_separate=False,
+        device="cpu",
+    ):
+        super(VQVAE_LE_DP, self).__init__()
+
+        self.register_buffer("block_size", torch.as_tensor(block_size))
+        self.register_buffer("sps", torch.as_tensor(sps))
+        self.register_buffer("start_lr", torch.as_tensor(lr))
+        self.register_buffer("lr", torch.as_tensor(lr))
+        self.register_buffer("beta", torch.as_tensor(beta))
+        self.register_buffer("num_taps_forward", torch.as_tensor(num_taps_forward))
+        self.register_buffer("num_taps_backward", torch.as_tensor(num_taps_backward))
+        self.register_buffer("requires_q", torch.as_tensor(requires_q))
+        self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
+        self.butterfly_forward = Butterfly2x2(
+            num_taps=num_taps_forward, trainable=True, timedomain=True, device=device
+        )
+        self.butterfly_backward = Butterfly2x2(
+            num_taps=num_taps_backward, trainable=True, timedomain=True, device=device
+        )
+        self.demapper = demapper
+        self.optimizer = torch.optim.Adam(
+            self.butterfly_forward.parameters(),
+            lr=self.start_lr,  # 0.5e-2,
+        )
+        self.optimizer.add_param_group({"params": self.butterfly_backward.parameters()})
+        # self.noise_sigma = self.demapper.noise_sigma
+        # self.demapper.noise_sigma.retain_grad = True
+        # self.optimizer.add_param_group({"params": self.demapper.noise_sigma})
+
+        # self.optimizer_var = torch.optim.Adam(
+        #     [self.demapper.noise_sigma],
+        #     lr=0.5,  # 0.5e-2,
+        # )
+
+    def reset(self):
+        self.lr = self.start_lr.clone()
+        self.butterfly_forward = Butterfly2x2(
+            num_taps=self.num_taps_forward.item(),
+            trainable=True,
+            timedomain=True,
+            device=self.butterfly_forward.taps.device,
+        )
+        self.butterfly_backward = Butterfly2x2(
+            num_taps=self.num_taps_backward.item(),
+            trainable=True,
+            timedomain=True,
+            device=self.butterfly_forward.taps.device,
+        )
+        self.optimizer = torch.optim.Adam(
+            self.butterfly_forward.parameters(),
+            lr=self.lr,
+        )
+        self.optimizer.add_param_group({"params": self.butterfly_backward.parameters()})
+        # self.optimizer.add_param_group({"params": self.noise_sigma})
+        # self.demapper.noise_sigma.retain_grad = True
+        # self.optimizer.add_param_group({"params": self.demapper.noise_sigma})
+
+    def forward(self, y):
+        # We need to produce enough q values on each forward pass such that we can
+        # calculate the ELBO loss in the backward pass & update the taps
+
+        num_samps = y.shape[1]
+        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
+
+        out = []
+        out_q = []
+        # We start our loop already at num_taps  (because we cannot equalize the start)
+        # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
+        # We will process sps * block_size - 2 * num_taps because we will cut out the first and last block
+
+        index_padding = (self.butterfly_forward.num_taps - 1) // 2
+        for i, k in enumerate(
+            range(
+                index_padding,
+                num_samps
+                - index_padding
+                - self.sps
+                * self.block_size,  # Back-off one block-size + filter_overlap from end to avoid overrunning
+                self.sps * self.block_size,
+            )
+        ):
+            # if i % (20000//self.block_size) == 0 and i != 0:
+            # print("Updating learning rate")
+            # self.update_lr(self.lr * 0.5)
+            # logger.debug("VAE LE block: %s", i)
+            in_index = torch.arange(
+                k - index_padding,
+                k + self.sps * self.block_size + index_padding,
+            )
+            # Equalization will give sps * block_size samples (because we add (num_taps - 1) in the beginning)
+            y_hat = self.butterfly_forward(y[:, in_index], "valid")
+
+            # We downsample so we will have floor(((sps * block_size - num_taps + 1) / sps) = floor(block_size - (num_taps - 1)/sps)
+            y_symb = y_hat[
+                :, 0 :: self.sps
+            ]  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
+
+            if self.IQ_separate == True:
+                q_hat = torch.cat(
+                    (
+                        torch.cat(
+                            (
+                                self.demapper(y_symb[0, :].real).unsqueeze(0),
+                                self.demapper(y_symb[0, :].imag).unsqueeze(0),
+                            ),
+                            axis=-1,
+                        ),
+                        torch.cat(
+                            (
+                                self.demapper(y_symb[1, :].real).unsqueeze(0),
+                                self.demapper(y_symb[1, :].imag).unsqueeze(0),
+                            ),
+                            axis=-1,
+                        ),
+                    ),
+                    axis=0,
+                )
+            else:
+                q_hat = torch.cat(
+                    (
+                        self.demapper(y_symb[0, :]).unsqueeze(0),
+                        self.demapper(y_symb[1, :]).unsqueeze(0),
+                    )
+                )
+            # We calculate the loss with less symbols, since the forward operation with "valid"
+            # is missing some symbols
+            # We assume the symbol of interest is at the center tap of the filter
+            y_index = in_index[
+                (self.butterfly_forward.num_taps - 1)
+                // 2 : -((self.butterfly_forward.num_taps - 1) // 2)
+            ]
+            loss = VQVAE_loss_DP(
+                # loss, var = ELBO_DP(
+                y[:, y_index],
+                q_hat,
+                y_symb,
+                self.beta,
+                self.sps,
+                self.demapper.constellation,
+                self.butterfly_backward,
+                IQ_separate=self.IQ_separate,
+            )
+
+            # print("noise_sigma: ", self.demapper.noise_sigma)
+            # self.demapper.noise_sigma.retain_grad()
+            loss.backward()
+            self.optimizer.step()
+            # self.optimizer_var.step()
+            self.optimizer.zero_grad()
+            # self.optimizer_var.zero_grad()
+
+            # self.demapper.noise_sigma = self.noise_sigma
+
+            output_symbols = y_symb[
+                :, : self.block_size
+            ]  # - self.butterfly_forward.num_taps // 2]
+            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
+            out.append(
+                output_symbols
+            )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
+
+            output_q = q_hat[:, : self.block_size, :]
+            out_q.append(output_q)
+
+        # print("loss: ", loss, "\t\t\t var: ", var)
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+
+        if self.requires_q == True:
+            eq_out = namedtuple("eq_out", ["y", "q", "loss"])
+            return eq_out(torch.cat(out, axis=1), torch.cat(out_q, axis=1), loss)
+        return torch.cat(out, axis=1)
+
+    def update_lr(self, new_lr):
+        self.lr = new_lr
+        for group in self.optimizer.param_groups:
+            group["lr"] = self.lr
+
+    def update_var(self, new_var):
+        self.demapper.noise_sigma = new_var
+
+    def update_beta(self, new_beta):
+        self.beta = new_beta
+
+
+##############################################################################################
+
+
+def hard_decision_shaping(rx, tx, amp_levels, nu_sc, var):
+    """
+    Function to perform (hard) decision for PCS formats
+    """
+    # estimate symbol error rate from output constellation by considering PCS
+    device = rx.device
+    num_lev = amp_levels.shape[0]
+    data = torch.empty_like(tx, device=device, dtype=torch.int32)
+    data_IQinv = torch.empty_like(data)
+    SER = torch.ones(2, 2, 4, device=device, dtype=torch.float32)
+
+    # calculate decision boundaries based on PCS
+    d_vec = (1 + 2 * nu_sc * var[0]) * (amp_levels[:-1] + amp_levels[1:]) / 2
+    d_vec0 = torch.cat(((-Inf * torch.ones(1, device=device)), d_vec), dim=0)
+    d_vec1 = torch.cat((d_vec, Inf * torch.ones(1, device=device)))
+
+    scale = (num_lev - 1) / 2
+    data = torch.round(scale * tx.float() + scale).to(torch.int32)  # decode TX
+    data_IQinv[:, 0, :], data_IQinv[:, 1, :] = data[:, 0, :], -(
+        data[:, 1, :] - scale * 2
+    )  # compensate potential IQ flip
+
+    rx *= torch.mean(
+        torch.sqrt(tx[:, 0, :].float() ** 2 + tx[:, 1, :].float() ** 2)
+    ) / torch.mean(
+        torch.sqrt(rx[:, 0, :] ** 2 + rx[:, 1, :] ** 2)
+    )  # normalize constellation output
+
+    ### zero phase-shift  torch.sqrt(2*torch.mean(rx[0,:N*sps:sps]**2))
+    SER[0, :, 0] = dec_on_bound(rx, data, d_vec0, d_vec1)
+    SER[1, :, 0] = dec_on_bound(rx, data_IQinv, d_vec0, d_vec1)
+
+    ### pi phase-shift
+    rx_pi = -(rx).detach().clone()
+    SER[0, :, 1] = dec_on_bound(rx_pi, data, d_vec0, d_vec1)
+    SER[1, :, 1] = dec_on_bound(rx_pi, data_IQinv, d_vec0, d_vec1)
+
+    ### pi/4 phase-shift
+    rx_pi4 = torch.empty_like(rx)
+    rx_pi4[:, 0, :], rx_pi4[:, 1, :] = -(rx[:, 1, :]).detach().clone(), rx[:, 0, :]
+    SER[0, :, 2] = dec_on_bound(rx_pi4, data, d_vec0, d_vec1)
+    SER[1, :, 2] = dec_on_bound(rx_pi4, data_IQinv, d_vec0, d_vec1)
+
+    ### 3pi/4 phase-shift
+    rx_3pi4 = -(rx_pi4).detach().clone()
+    SER[0, :, 3] = dec_on_bound(rx_3pi4, data, d_vec0, d_vec1)
+    SER[1, :, 3] = dec_on_bound(rx_3pi4, data_IQinv, d_vec0, d_vec1)
+
+    SER_out = torch.amin(SER, dim=(0, -1))  # choose minimum estimation per polarization
+    return SER_out
+
+
+def dec_on_bound(rx, tx_int, d_vec0, d_vec1):
+    """
+    Function to perform (hard) decision based on boundries
+    """
+    # hard decision based on the decision boundaries d_vec0 (lower) and d_vec1 (upper)
+    SER = torch.zeros(rx.shape[0], dtype=torch.float32, device=rx.device)
+
+    xI0 = d_vec0.index_select(dim=0, index=tx_int[0, 0, :])
+    xI1 = d_vec1.index_select(dim=0, index=tx_int[0, 0, :])
+    corr_xI = torch.bitwise_and((xI0 <= rx[0, 0, :]), (rx[0, 0, :] < xI1))
+    xQ0 = d_vec0.index_select(dim=0, index=tx_int[0, 1, :])
+    xQ1 = d_vec1.index_select(dim=0, index=tx_int[0, 1, :])
+    corr_xQ = torch.bitwise_and((xQ0 <= rx[0, 1, :]), (rx[0, 1, :] < xQ1))
+
+    yI0 = d_vec0.index_select(dim=0, index=tx_int[1, 0, :])
+    yI1 = d_vec1.index_select(dim=0, index=tx_int[1, 0, :])
+    corr_yI = torch.bitwise_and((yI0 <= rx[1, 0, :]), (rx[1, 0, :] < yI1))
+    yQ0 = d_vec0.index_select(dim=0, index=tx_int[1, 1, :])
+    yQ1 = d_vec1.index_select(dim=0, index=tx_int[1, 1, :])
+    corr_yQ = torch.bitwise_and((yQ0 <= rx[1, 1, :]), (rx[1, 1, :] < yQ1))
+
+    ex, ey = ~(torch.bitwise_and(corr_xI, corr_xQ)), ~(
+        torch.bitwise_and(corr_yI, corr_yQ)
+    )  # no error only if both I or Q are correct
+    SER[0], SER[1] = (
+        torch.sum(ex) / ex.nelement(),
+        torch.sum(ey) / ey.nelement(),
+    )  # SER = numb. of errors/ num of symbols
+    return SER
 
 
 class PilotAEQ_DP(torch.nn.Module):

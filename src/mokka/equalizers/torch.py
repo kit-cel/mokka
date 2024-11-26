@@ -176,6 +176,110 @@ class Butterfly2x2(torch.nn.Module):
         return torch.cat((result_x.unsqueeze(0), result_y.unsqueeze(0)), dim=0)
 
 
+class ButterflyNxN(torch.nn.Module):
+    """
+    Class implementing the NxN complex butterfly filter structure.
+    """
+
+    def __init__(
+        self,
+        taps=None,
+        num_taps=None,
+        num_channels=None,
+        trainable=False,
+        timedomain=True,
+        device="cpu",
+        mode="valid",
+    ):
+        """
+        Initialize ButterflyNxN Filter.
+
+        :param taps:      filter taps for initialization.
+        :param num_taps:  number of taps if no filter taps are provided for
+                          initialization
+        :param num_channels:  number of channels
+        :param trainable: if the taps should be included in the parameters() attribute
+                          to be trainable with automatic differentiation.
+        :params mode: convolution mode (either valid, same, or full)
+        """
+        super(ButterflyNxN, self).__init__()
+        if num_channels is None:
+            raise ValueError("num_channels must be set")
+        if taps is None:
+            if num_taps is None:
+                raise ValueError("Either taps or num_taps must be set")
+            filter_taps = torch.zeros(
+                (num_channels**2, num_taps), dtype=torch.complex64, device=device
+            )
+            for diag_filter in range(num_channels):
+                filter_taps[
+                    diag_filter * num_channels, num_taps // 2
+                ] = 1.0  # filter h_ij with i=j (diagonal of MIMO matrix) are initialized with Dirac
+            self.num_taps = num_taps
+        else:
+            assert (taps.dim() == 2 and taps.size()[0] == num_channels**2) or (
+                taps.dim() == 3 and taps.size()[0] == num_channels
+            )
+            # assert taps.size()[0] == num_channels**2
+            assert taps.dtype == torch.complex64
+            filter_taps = taps
+            self.num_taps = taps.size()[-1]
+        self.num_channels = num_channels
+        # We store h_xx, h_xy, h_yy, h_yx
+        if trainable == True:
+            self.register_parameter("taps", torch.nn.Parameter(filter_taps))
+        elif trainable == False:
+            self.register_buffer("taps", filter_taps)
+        else:
+            raise ValueError("trainable must be set to either True or False.")
+
+        if timedomain:
+            self.convolve = torch.nn.Conv1d(
+                self.num_channels,
+                self.num_channels,
+                kernel_size=self.num_taps,
+                padding=mode,
+                bias=False,
+            )  # convolve
+        else:
+            raise ValueError(
+                "Not yet implemented for frequency domain."
+            )  # self.convolve = convolve_overlap_save
+
+    def forward(self, y):
+        """
+        Perform NxN convolution with taps in self.taps.
+
+        :params y: Signal to convolve
+        :returns: convolved signal
+        """
+        assert y.dim() == 2
+        assert y.size()[0] == self.num_channels
+        assert y.dtype == torch.complex64
+
+        self.convolve.weight.data = torch.flip(
+            self.taps.reshape(8, 8, 25), (2,)
+        )  # flip to assre proper convolution (not cross-correlation) - not neccessary for symmetric filters
+        return torch.squeeze(self.convolve(y))
+
+    def forward_abssquared(self, y, mode="valid"):
+        """
+        Perform 2x2 convolution with absolut-squared of taps in self.taps.
+
+        :params y: Signal to convolve
+        :returns: convolved signal
+        """
+        assert y.dim() == 2
+        assert y.size()[0] == self.num_channels
+        # assert y.dtype == torch.complex64
+
+        h_abs_sq = self.taps.real**2 + self.taps.imag**2
+        self.convolve.weight.data = torch.flip(
+            h_abs_sq.reshape(8, 8, 25), (2,)
+        )  # flip to assre proper convolution (not cross-correlation) - not neccessary for symmetric filters
+        return torch.squeeze(self.convolve(y))
+
+
 class Butterfly4x4(torch.nn.Module):
     """
     Class implementing the 4x4 real-valued butterfly filter.
