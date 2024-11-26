@@ -363,7 +363,7 @@ def ELBO_NxN(
         h_conv_E_Q_x.real**2
         + h_conv_E_Q_x.imag**2
         + butterfly_filter.forward_abssquared(
-            (E_Q_x_abssq - torch.abs(E_Q_x) ** 2).to(torch.float32)
+            (E_Q_x_abssq - torch.abs(E_Q_x) ** 2)#.to(torch.float32)
         ),
         axis=1,
     )
