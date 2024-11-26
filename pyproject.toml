@@ -37,6 +37,7 @@ jaxtyping = "^0.2.36"
 [tool.poetry.group.dev.dependencies]
 pre-commit = "*"
 pytest = "*"
+pytest-coverage = "*"
 black = "*"
 flake8 = "*"
 pylint = "*"
@@ -46,6 +47,8 @@ python-lsp-black = "*"
 sphinx = "*"
 sphinx-pyproject = "*"
 sphinx_rtd_theme = "*"
+tox = "*"
+tox-gh-actions = "*"
 
 [tool.poetry.extras]
 tf = [

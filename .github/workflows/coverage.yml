@@ -17,16 +17,22 @@ jobs:
         with:
           python-version: "3.10"
           cache: "pip"
-      - name: Setup virtual environment
+      - name: Install poetry
+        uses: abatilo/actions-poetry@v2
+      - name: Setup a local virtual environment (if no poetry.toml file)
         run: |
-          python -m venv venv
-          source venv/bin/activate
-          pip install pytest pytest-cov
+          poetry config virtualenvs.create true --local
+          poetry config virtualenvs.in-project true --local
+      - uses: actions/cache@v3
+        name: Define a cache for the virtual environment based on the dependencies lock file
+        with:
+          path: ./.venv
+          key: venv-${{ hashFiles('poetry.lock') }}
+      - name: Install the project dependencies
+        run: poetry install --with=dev
       - name: Run coverage for mokka
         run: |
-          source venv/bin/activate
-          pip install '.[torch,tf,dev]'
-          pytest tests --cov=mokka --cov-report xml
+          poetry run pytest tests --cov=mokka --cov-report xml
       - uses: codecov/codecov-action@v3
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
