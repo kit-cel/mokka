@@ -209,11 +209,11 @@ class ButterflyNxN(torch.nn.Module):
             if num_taps is None:
                 raise ValueError("Either taps or num_taps must be set")
             filter_taps = torch.zeros(
-                (num_channels**2, num_taps), dtype=torch.complex64, device=device
+                (num_channels,num_channels, num_taps), dtype=torch.complex64, device=device
             )
             for diag_filter in range(num_channels):
                 filter_taps[
-                    diag_filter * num_channels, num_taps // 2
+                    diag_filter,diag_filter, num_taps // 2
                 ] = 1.0+1j*0  # filter h_ij with i=j (diagonal of MIMO matrix) are initialized with Dirac
             self.num_taps = num_taps
         else:
@@ -225,6 +225,7 @@ class ButterflyNxN(torch.nn.Module):
             filter_taps = taps
             self.num_taps = taps.size()[-1]
         self.num_channels = num_channels
+        self.mode = mode
         # We store h_xx, h_xy, h_yy, h_yx
         if trainable == True:
             self.register_parameter("taps", torch.nn.Parameter(filter_taps))
@@ -233,22 +234,7 @@ class ButterflyNxN(torch.nn.Module):
         else:
             raise ValueError("trainable must be set to either True or False.")
 
-        if timedomain:
-            self.convolve = torch.nn.Conv1d(
-                self.num_channels,
-                self.num_channels,
-                kernel_size=self.num_taps,
-                padding=mode,
-                bias=False,
-            )  # convolve
-            self.convolve_sq = torch.nn.Conv1d(
-                self.num_channels,
-                self.num_channels,
-                kernel_size=self.num_taps,
-                padding=mode,
-                bias=False,
-            )  # convolve squarred filter
-        else:
+        if timedomain == False:
             raise ValueError(
                 "Not yet implemented for frequency domain."
             )  # self.convolve = convolve_overlap_save
@@ -264,10 +250,13 @@ class ButterflyNxN(torch.nn.Module):
         assert y.size()[0] == self.num_channels
         assert y.dtype == torch.complex64
 
-        self.convolve.weight.data = torch.flip(
-            self.taps.reshape(self.num_channels, self.num_channels, self.num_taps), (2,)
-        )  # flip to assre proper convolution (not cross-correlation) - not neccessary for symmetric filters
-        return torch.squeeze(self.convolve(y))
+        return torch.squeeze(
+            torch.conv1d(
+                y,
+                torch.flip(self.taps.reshape(self.num_channels, self.num_channels, self.num_taps), (2,)),
+                padding=self.mode,
+            )
+        )
 
     def forward_abssquared(self, y, mode="valid"):
         """
@@ -278,14 +267,15 @@ class ButterflyNxN(torch.nn.Module):
         """
         assert y.dim() == 2
         assert y.size()[0] == self.num_channels
-        # assert y.dtype == torch.complex64
 
         h_abs_sq = self.taps.real**2 + self.taps.imag**2
-        self.convolve_sq.weight.data = torch.flip(
-            h_abs_sq.reshape(self.num_channels, self.num_channels, self.num_taps), (2,)
-        )  # flip to assre proper convolution (not cross-correlation) - not neccessary for symmetric filters
-        return torch.squeeze(self.convolve_sq(y))
-
+        return torch.squeeze(
+            torch.conv1d(
+                y,
+                torch.flip(h_abs_sq.reshape(self.num_channels, self.num_channels, self.num_taps), (2,)),
+                padding=self.mode,
+            )
+        )
 
 class Butterfly4x4(torch.nn.Module):
     """
