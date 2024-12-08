@@ -134,7 +134,7 @@ class SimpleConstellationMapper(torch.nn.Module):
         """
         # Test bits
         B = generate_all_bits(self.m.item()).copy()
-        bits = torch.from_numpy(B).to(self.weights.device)
+        bits = torch.from_numpy(B.copy()).to(self.weights.device)
         logger.debug("bits device: %s", bits.device)
         out = self.forward(bits)
         return out
@@ -304,7 +304,7 @@ class ConstellationMapper(torch.nn.Module):
         mod_args = torch.tensor(args, dtype=torch.float32)
         mod_args = mod_args.repeat(2 ** self.m.item(), 1).split(1, dim=-1)
         B = generate_all_bits(self.m.item()).copy()
-        bits = torch.from_numpy(B).to(self.map1.weight.device)
+        bits = torch.from_numpy(B.copy()).to(self.map1.weight.device)
         logger.debug("bits device: %s", bits.device)
         out = self.forward(bits, *mod_args).flatten()
         return out
@@ -413,7 +413,7 @@ class SeparatedConstellationMapper(torch.nn.Module):
         :returns: tensor of constellation points
         """
         # Test bits
-        bits = torch.from_numpy(generate_all_bits(self.m.item())).to(
+        bits = torch.from_numpy(generate_all_bits(self.m.item()).copy()).to(
             self.real_weights.device
         )
         logger.debug("bits device: %s", bits.device)
