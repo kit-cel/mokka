@@ -188,7 +188,6 @@ class ButterflyNxN(torch.nn.Module):
         num_channels=None,
         trainable=False,
         timedomain=True,
-        device="cpu",
         mode="valid",
     ):
         """
@@ -209,7 +208,7 @@ class ButterflyNxN(torch.nn.Module):
             if num_taps is None:
                 raise ValueError("Either taps or num_taps must be set")
             filter_taps = torch.zeros(
-                (num_channels,num_channels, num_taps), dtype=torch.complex64, device=device
+                (num_channels,num_channels, num_taps), dtype=torch.complex64,
             )
             for diag_filter in range(num_channels):
                 filter_taps[
