@@ -84,6 +84,27 @@ def MI(M, PX, N, symbol_idx, Q_YX):
     return MI
 
 
+def MI_AWGN(received_symbols:t.tensor, transmitted_sybmols:t.tensor, constellation_points:t.tensor, constellation_probabilites:t.tensor, noise_power:t.tensor) -> t.tensor:
+    """
+    Calculate the Mutual infomation like a boss (LS) under the assumption of an AWGN channel
+
+    :param received_symbols: t.tensor of received symbols
+    :param transmitted_sybmols: t.tensor of received symbols
+    :param constellation_points: position of the constellation points
+    :param constellation_probabilites: probabilites of the constellation points
+    :param noise_power: linear noise power (sum of both dimensions)
+    :returns: estimate of the mutual inforamation (MI)
+
+    Written by:
+    - Benedikt Geiger, 11.12.2024
+    """
+    assert (received_symbols.ndim + transmitted_sybmols.ndim + constellation_points.ndim + constellation_probabilites.ndim) == 4, f"Expected all inputs to have dim 1"
+    numerator  = t.exp(-t.abs(received_symbols-transmitted_sybmols)**2/(noise_power))
+    denominator = t.sum(t.exp(-t.abs(received_symbols.unsqueeze(1)-constellation_points.unsqueeze(0))**2/(noise_power))*constellation_probabilites.unsqueeze(0), dim=1)
+    MI = t.mean(t.log2(numerator/denominator))
+    return MI
+
+
 def hMI(m, N, symbol_idx, demapped_symbol_idx):
     """
     Calculate the mutual information according to \
@@ -154,3 +175,42 @@ def SNR(M, sym_idx, rx_syms):
     SNR = torch.mean(torch.square(torch.abs(rx_vals_mean))) / torch.mean(rx_vals_sigma2)
     SNR_dB = 10 * torch.log10(SNR)
     return SNR, SNR_dB
+
+
+def calculate_BER(predictions, labels):
+    """
+    Calculates the bit error rate
+
+    Parameters
+    ----------
+    predictions    : Vector
+        Log-likelihood ratios (LLRs)
+    labels         : Vector
+        Transmitted bits
+
+    Returns
+    -------
+    BER            : float
+        Bit Error Rate (BER)    
+    """
+    BER = torch.sum((predictions > 0.5) != labels)/labels.numel()
+    return BER
+
+
+def calculate_SER(predictions, labels):
+    """
+    Calculates the symbol error rate
+
+    Parameters
+    ----------
+    predictions    : Vector
+        Probabilites that a certain symbol was transmitted
+    labels         : Vector
+        Transmitted symbols
+
+    Returns
+    -------
+    SER            : float
+        Symbols Error Rate (SER)    
+    """
+    return (torch.sum(torch.argmax(predictions, 1) != labels) / predictions.shape[0])

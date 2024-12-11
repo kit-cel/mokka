@@ -189,8 +189,8 @@ class ConstellationMapper(torch.nn.Module):
 
     :param m: bits per symbol
     :param mod_extra_params: index of extra parameters to feed the NN
-    :param center_constellation: Apply operation at the end to center constellation
-    :param normalize: Apply normalization to unit energy
+    :param center_constellation: Removes the mean from the constellation, i.e., ensures that E{X} = 0
+    :param normalize_constellation: Normalizes the constellation to unit power, i.e., E{|X|^2} = 1
     :param qam_init: Initialize the weights to form a Gray mapped QAM constellation
     """
 
@@ -198,8 +198,8 @@ class ConstellationMapper(torch.nn.Module):
         self,
         m,
         mod_extra_params=None,
-        center_constellation=False,
-        normalize=True,
+        center_constellation=True,
+        normalize_constellation=True,
         qam_init=False,
     ):
         """Construct ConstellationMapper."""
@@ -208,7 +208,7 @@ class ConstellationMapper(torch.nn.Module):
         self.register_buffer("m", torch.tensor(m))
         self.register_buffer("mod_extra_params", torch.tensor(mod_extra_params or []))
         self.register_buffer("center_constellation", torch.tensor(center_constellation))
-        self.register_buffer("normalize", torch.tensor(normalize))
+        self.register_buffer("normalize_constellation", torch.tensor(normalize_constellation))
         # Mapper
         self.map1 = torch.nn.Linear(max(len(mod_extra_params or []), 1), 2 ** (m + 1))
         self.map2 = torch.nn.Linear(2 ** (m + 1), 2 ** (m + 1))
@@ -253,43 +253,45 @@ class ConstellationMapper(torch.nn.Module):
             B_hot = bits_to_onehot(b)
         logger.debug("len args: %s", len(args))
         logger.debug("args: %s", args)
-        if len(self.mod_extra_params):
-            # Concatenate arguments along batch_axis
-            mod_args = (
-                torch.stack(
-                    tuple(args[idx] for idx in self.mod_extra_params),
-                    dim=1,
-                )
-                .to(device)
-                .squeeze(2)
-            )
-            # Generate Constellation mapping c of size 2**m
-            # c = self.ReLU(self.map1(snr_dB))
-        else:
-            # Just feed the network with zeros which will zero
-            # influence of weights of first layer
-            # and only train bias
-            mod_args = torch.zeros((*b.size()[:-1], 1), device=device)
-            # c = self.ReLU(self.map1(torch.zeros((torch.numel(B),), device=device)))
-            # c = torch.unsqueeze(c, 0)
-        logger.debug("mod_args: %s", mod_args)
-        logger.debug("mod_args dim: %s", mod_args.size())
-        c = self.ReLU(self.map1(mod_args))
-        logger.debug("c size at creation: %s", c.size())
-        c = self.map2(c)
-        c = torch.view_as_complex(
-            torch.reshape(c, (*b.size()[:-1], 2 ** self.m.item(), 2))
-        )
-        if self.center_constellation.item():
-            c = normalization.centered_energy(c, self.p_symbols)
-        elif self.normalize:
-            c = normalization.energy(c, self.p_symbols)
-        logger.debug("c device: %s", c.device)
-        logger.debug("c size after scaling: %s", c.size())
-        logger.debug("c energy for item 0: %s", torch.abs(c[0, :]) ** 2)
+        # if len(self.mod_extra_params):
+        #     # Concatenate arguments along batch_axis
+        #     mod_args = (
+        #         torch.stack(
+        #             tuple(args[idx] for idx in self.mod_extra_params),
+        #             dim=1,
+        #         )
+        #         .to(device)
+        #         .squeeze(2)
+        #     )
+        #     # Generate Constellation mapping c of size 2**m
+        #     # c = self.ReLU(self.map1(snr_dB))
+        # else:
+        #     # Just feed the network with zeros which will zero
+        #     # influence of weights of first layer
+        #     # and only train bias
+        #     mod_args = torch.zeros((*b.size()[:-1], 1), device=device)
+        #     # c = self.ReLU(self.map1(torch.zeros((torch.numel(B),), device=device)))
+        #     # c = torch.unsqueeze(c, 0)
+        # logger.debug("mod_args: %s", mod_args)
+        # logger.debug("mod_args dim: %s", mod_args.size())
+        # c = self.ReLU(self.map1(mod_args))
+        # logger.debug("c size at creation: %s", c.size())
+        # c = self.map2(c)
+        # print(c.shape)
+        # if self.center_constellation:
+        #     c = normalization.center_constellation(c, self.p_symbols)
+        # if self.normalize_constellation:
+        #     c = normalization.normalize_constellation(c, self.p_symbols)
+        # logger.debug("c device: %s", c.device)
+        # logger.debug("c size after scaling: %s", c.size())
+        # logger.debug("c energy for item 0: %s", torch.abs(c[0, :]) ** 2)
+        # c = torch.view_as_complex(
+        #     torch.reshape(c, (*b.size()[:-1], 2 ** self.m.item(), 2))
+        # )
+        # Get constellation
+        c = self.get_constellation(*args)
         # transmit (batchsize x symbols per training sample) symbols
         x = torch.sum(B_hot * c, -1)
-        x = torch.unsqueeze(x, 1)
         logger.debug("x device: %s", x.device)
         return x
 
@@ -307,8 +309,33 @@ class ConstellationMapper(torch.nn.Module):
         B = generate_all_bits(self.m.item()).copy()
         bits = torch.from_numpy(B.copy()).to(self.map1.weight.device)
         logger.debug("bits device: %s", bits.device)
-        out = self.forward(bits, *mod_args).flatten()
-        return out
+        if len(self.mod_extra_params):
+            # Concatenate arguments along batch_axis
+            mod_args = (
+                torch.stack(
+                    tuple(args[idx] for idx in self.mod_extra_params),
+                    dim=1,
+                )
+                .to(bits.device)
+                .squeeze(2)
+            )
+            # To-Do: Need to fix this
+            # Generate Constellation mapping c of size 2**m
+            # c = self.ReLU(self.map1(snr_dB))
+        else:
+            # Just feed the network with zeros which will zero
+            # influence of weights of first layer
+            # and only train bias
+            mod_args = torch.zeros((1,), device=bits.device)
+            c = self.ReLU(self.map1(mod_args))
+            c = self.map2(c)
+            c = torch.view_as_complex(torch.reshape(c, (2 ** self.m.item(), 2)))
+        if self.center_constellation:
+            c = normalization.center_constellation(c, self.p_symbols)
+        if self.normalize_constellation:
+            c = normalization.normalize_constellation(c, self.p_symbols)
+        # out = self.forward(bits, *mod_args).flatten()
+        return c
 
     @staticmethod
     def load_model(model_dict):

@@ -48,3 +48,38 @@ def centered_energy(c, p=None):
             )
         )
     return c
+
+
+def center_constellation(constellation_points, constellation_probabilities=None):
+    """Performs centering (zero-mean) of the complex constellation
+
+    :param constellation_points: complex constellation points
+    :param constellation_probabilites: probabilities, if None: uniform probability is assumed
+    :returns: centered complex constellation
+
+    Updated by:
+    - Benedikt Geiger, 21.11.2024  
+    """
+    if constellation_probabilities is not None:
+        centered_constellation_points = constellation_points - torch.sum(constellation_probabilities * constellation_points, -1)
+    else:
+        centered_constellation_points = constellation_points - torch.mean(constellation_points, -1)
+    return centered_constellation_points
+
+
+def normalize_constellation(constellation_points, constellation_probabilities=None):
+    """Perform normalization (unit power) of the complex constellation.
+
+    :param constellation_points: complex constellation points
+    :param constellation_probabilites: probabilities, if None: uniform probability is assumed
+    :returns: unit power complex constellation
+
+    Updated by:
+    - Benedikt Geiger, 21.11.2024  
+    """
+    if constellation_probabilities is not None:
+        power = torch.sum(constellation_probabilities * torch.abs(constellation_points)**2, -1)
+    else:
+        power = torch.mean(torch.abs(constellation_points)**2, -1)
+    normalized_constellation = constellation_points/torch.sqrt(power)
+    return normalized_constellation
