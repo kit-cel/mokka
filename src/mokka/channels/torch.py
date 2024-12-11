@@ -1388,7 +1388,13 @@ class PMDElement(torch.nn.Module):
     """
 
     def __init__(
-        self, sigma_p, pmd_parameter, span_length, steps_per_span, method="static"
+        self,
+        sigma_p,
+        span_length,
+        steps_per_span,
+        pmd_parameter=None,
+        dgd_tau=None,
+        method="static",
     ):
         """
         Initialize :py:class:`PMDElement`.
@@ -1423,13 +1429,19 @@ class PMDElement(torch.nn.Module):
         self.J_k1 = self.J.clone()
 
         # Also calculate DGD
-        self.pmd_parameter = pmd_parameter
-        mean_DGD = self.pmd_parameter * torch.sqrt(torch.as_tensor(span_length))
-        DGD_sec_mean = mean_DGD / (
-            0.9213 * torch.sqrt(torch.as_tensor(steps_per_span))
-        )  # 3D Maxwellian distribution
-        DGD_sec_std = DGD_sec_mean / 5.0
-        self.DGD_sec = DGD_sec_mean + DGD_sec_std * torch.zeros((1,)).normal_()
+        if pmd_parameter is not None:
+            self.pmd_parameter = pmd_parameter
+            mean_DGD = self.pmd_parameter * torch.sqrt(torch.as_tensor(span_length))
+            DGD_sec_mean = mean_DGD / (
+                0.9213 * torch.sqrt(torch.as_tensor(steps_per_span))
+            )  # 3D Maxwellian distribution
+            DGD_sec_std = DGD_sec_mean / 5.0
+            self.DGD_sec = DGD_sec_mean + DGD_sec_std * torch.zeros((1,)).normal_()
+        elif dgd_tau is not None:
+            self.DGD_sec = dgd_tau
+
+        else:
+            raise ValueError("Either dgd_tau or pmd_parameter must be set.")
 
     @property
     def a(self):
@@ -1499,6 +1511,82 @@ class PMDElement(torch.nn.Module):
             return self.forward_static(signal)
         elif self.method == "dynamic":
             return self.forward_dynamic(signal)
+
+
+class PMDAngleElement(torch.nn.Module):
+    """
+    Learn parameters of a single PMD Element (Rotation + DGD)
+
+    This implements the learning process based on Farsi paper on Learning to extract...
+
+    """
+
+    def __init__(
+        self,
+        L,
+        num_steps,
+        pmd_parameter=None,
+        dgd_tau=None,
+        angles=None,
+        trainable=False,
+        theta=True,
+        phi=True,
+        psi=True,
+    ):
+        super(PMDAngleElement, self).__init__()
+        # angles are theta, phi, psi
+        if angles is None:
+            angles = torch.zeros((3,), dtype=torch.float)
+            # torch.nn.init.uniform_(angles, -torch.pi, torch.pi)
+
+        if trainable:
+            self.register_parameter("angles", torch.nn.Parameter(angles))
+        else:
+            self.register_buffer("angles", angles)
+            if theta:
+                self.angles[0].uniform_(-torch.pi, torch.pi)
+            if phi:
+                self.angles[1].uniform_(-torch.pi, torch.pi)
+            if psi:
+                self.angles[2].uniform_(-torch.pi, torch.pi)
+        if pmd_parameter is not None:
+            self.DGD_sec = pmd_parameter * L
+        elif dgd_tau is not None:
+            self.DGD_sec = dgd_tau
+        else:
+            self.DGD_sec = torch.nn.Parameter(
+                torch.nn.init.normal_(torch.zeros((1,), dtype=torch.float))
+            )
+
+    @property
+    def J_k1(self):
+        # Construct Jones matrix from rotation angles
+        theta, phi, psi = self.angles
+        theta = torch.zeros(
+            [],
+        )
+        # print(theta, phi, psi)
+        J_0 = torch.stack(
+            (
+                torch.stack(
+                    (torch.cos(phi), 1j * torch.exp(1j * psi) * torch.sin(phi))
+                ),
+                torch.stack(
+                    (-1j * torch.exp(1j * psi) * torch.sin(phi), torch.cos(phi))
+                ),
+            )
+        )
+        phase_rot = torch.stack(
+            (
+                torch.stack((torch.exp(1j * theta), torch.as_tensor(0))),
+                torch.stack((torch.as_tensor(0), torch.exp(-1j * theta))),
+            )
+        )
+
+        return phase_rot @ J_0
+
+    def forward(self, signal):
+        return torch.matmul(self.J_k1, signal)
 
 
 class FixedChannelDP(torch.nn.Module):
@@ -1749,7 +1837,6 @@ class DPImpairments(torch.nn.Module):
         RX_fft[1, :] = (
             H[:, 1, 0] * signal_f[0, :] + H[:, 1, 1] * signal_f[1, :]
         ) * exp_cd
-
         return torch.fft.ifft(RX_fft, axis=1)
 
 
@@ -1760,15 +1847,17 @@ class PMDPDLChannel(torch.nn.Module):
         self,
         L,
         num_steps,
-        pmd_parameter,
         pmd_correlation_length,
         f_samp,
+        dgd_tau=None,
+        pmd_parameter=None,
         pmd_sigma=0.0,
         num_pdl_elements=0,
         pdl_max=0.8,
         pdl_min=0.1,
         method="freq",
         trainable=False,
+        angles=False,
     ):
         """
         Initialize :py:class:`PMDPDLChannel`.
@@ -1788,18 +1877,57 @@ class PMDPDLChannel(torch.nn.Module):
         self.dz = torch.as_tensor(L / num_steps)
         self.dt = 1.0 / f_samp
         self.num_steps = num_steps
-        self.pmd_elements = [
-            PMDElement(pmd_sigma, pmd_parameter, L, num_steps) for _ in range(num_steps)
-        ]
-        # dgdsec = torch.as_tensor([p_e.DGD_sec for p_e in self.pmd_elements])
+        # Initialize Rotation & DGD with a PMD element
+        if trainable:
+            self.pmd_elements = torch.nn.ParameterList(
+                [
+                    PMDAngleElement(
+                        L,
+                        num_steps,
+                        pmd_parameter=pmd_parameter,
+                        dgd_tau=dgd_tau,
+                        trainable=True,
+                    )
+                    for _ in range(num_steps)
+                ]
+            )
+        else:
+            if angles:
+                self.pmd_elements = [
+                    PMDAngleElement(
+                        L,
+                        num_steps,
+                        pmd_parameter=pmd_parameter,
+                        dgd_tau=dgd_tau,
+                        theta=False,
+                    )
+                    for _ in range(num_steps)
+                ]
+            else:
+                self.pmd_elements = [
+                    PMDElement(
+                        pmd_sigma,
+                        L,
+                        num_steps,
+                        pmd_parameter=pmd_parameter,
+                        dgd_tau=dgd_tau,
+                    )
+                    for _ in range(num_steps)
+                ]
         for p_e in self.pmd_elements:
             logger.debug("DGD sec: %s", p_e.DGD_sec)
         self.pmd_correlation_length = pmd_correlation_length
-        self.pdl_elements = (
+        pdl_elements = (
             torch.zeros(num_pdl_elements, dtype=torch.float32).uniform_()
             * (pdl_max - pdl_min)
             + pdl_min
         )
+        if trainable:
+            self.pdl_elements = torch.nn.Parameter(
+                torch.zeros(num_pdl_elements, dtype=torch.float32)
+            )
+        else:
+            self.pdl_elements = pdl_elements
 
         if num_pdl_elements > 0:
             self.pdl_period = num_steps // num_pdl_elements
@@ -1892,6 +2020,7 @@ class PMDPDLChannel(torch.nn.Module):
         for n in range(self.num_steps):
             pmd_element = self.pmd_elements[n]
             dgd_dz = pmd_element.DGD_sec * self.dz / self.pmd_correlation_length
+            logger.debug("dgd_dz: ", dgd_dz)
             self.betapa[1] = -dgd_dz / 2.0
             self.betapb[1] = dgd_dz / 2.0
             if self.pdl_elements.shape[0] > 0 and (n % self.pdl_period) == 0:
@@ -1933,3 +2062,38 @@ class PMDPDLChannel(torch.nn.Module):
         h_x = self._forward_freq(u_f)
         h_y = self._forward_freq(torch.flip(u_f, dims=(0,)))
         return torch.cat((h_x, h_y), dim=0)
+
+
+def decompose_stokes_rotation(J):
+    """
+    Decompose a rotation in Stokes' space into angles.
+
+    Input Jones matrix must be unitary. We use the description of the rotation.
+
+    :param J: Jones matrix to decompose
+    :returns: Tuple of (theta, phi, psi)
+    """
+
+    # Check if J is unitary
+    I = J @ J.conj().resolve_conj().T
+    try:
+        assert torch.allclose(I.real, torch.eye(2), atol=1e-5)
+    except AssertionError:
+        logger.error(
+            "Input matrix J is not unitary: I=%s",
+        )
+        raise AssertionError
+
+    # First determine phase rotation
+    theta = torch.angle(J[0, 0])
+
+    # Remove phase shift
+    J_rot = torch.tensor([[torch.exp(-1j * theta), 0], [0, torch.exp(1j * theta)]]) @ J
+
+    # Determine phi
+    phi = torch.acos(J_rot[0, 0].real)
+
+    # Determine psi
+    psi = torch.angle(-1j / torch.sin(phi) * J_rot[0, 1]).real
+
+    return (theta, phi, psi)
