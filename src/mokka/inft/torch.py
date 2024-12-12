@@ -84,7 +84,7 @@ def MI(M, PX, N, symbol_idx, Q_YX):
     return MI
 
 
-def MI_AWGN(received_symbols:t.tensor, transmitted_sybmols:t.tensor, constellation_points:t.tensor, constellation_probabilites:t.tensor, noise_power:t.tensor) -> t.tensor:
+def MI_AWGN(received_symbols:torch.tensor, transmitted_sybmols:torch.tensor, constellation_points:torch.tensor, constellation_probabilites:torch.tensor, noise_power:torch.tensor) -> torch.tensor:
     """
     Calculate the Mutual infomation like a boss (LS) under the assumption of an AWGN channel
 
@@ -99,9 +99,9 @@ def MI_AWGN(received_symbols:t.tensor, transmitted_sybmols:t.tensor, constellati
     - Benedikt Geiger, 11.12.2024
     """
     assert (received_symbols.ndim + transmitted_sybmols.ndim + constellation_points.ndim + constellation_probabilites.ndim) == 4, f"Expected all inputs to have dim 1"
-    numerator  = t.exp(-t.abs(received_symbols-transmitted_sybmols)**2/(noise_power))
-    denominator = t.sum(t.exp(-t.abs(received_symbols.unsqueeze(1)-constellation_points.unsqueeze(0))**2/(noise_power))*constellation_probabilites.unsqueeze(0), dim=1)
-    MI = t.mean(t.log2(numerator/denominator))
+    numerator  = torch.exp(-torch.abs(received_symbols-transmitted_sybmols)**2/(noise_power))
+    denominator = torch.sum(torch.exp(-torch.abs(received_symbols.unsqueeze(1)-constellation_points.unsqueeze(0))**2/(noise_power))*constellation_probabilites.unsqueeze(0), dim=1)
+    MI = torch.mean(torch.log2(numerator/denominator))
     return MI
 
 
