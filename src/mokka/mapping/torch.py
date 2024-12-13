@@ -289,6 +289,7 @@ class ConstellationMapper(torch.nn.Module):
         #     torch.reshape(c, (*b.size()[:-1], 2 ** self.m.item(), 2))
         # )
         # Get constellation
+        print("Hi2")
         c = self.get_constellation(*args)
         # transmit (batchsize x symbols per training sample) symbols
         x = torch.sum(B_hot * c, -1)
@@ -305,20 +306,30 @@ class ConstellationMapper(torch.nn.Module):
         """
         # Test bits
         mod_args = torch.tensor(args, dtype=torch.float32)
-        mod_args = mod_args.repeat(2 ** self.m.item(), 1).split(1, dim=-1)
+        # print(mod_args)
+        # mod_args = mod_args.repeat(2 ** self.m.item(), 1).split(1, dim=-1)
         B = generate_all_bits(self.m.item()).copy()
         bits = torch.from_numpy(B.copy()).to(self.map1.weight.device)
         logger.debug("bits device: %s", bits.device)
         if len(self.mod_extra_params):
             # Concatenate arguments along batch_axis
-            mod_args = (
-                torch.stack(
-                    tuple(args[idx] for idx in self.mod_extra_params),
-                    dim=1,
-                )
-                .to(bits.device)
-                .squeeze(2)
-            )
+            # print(args)
+            # print(args.ndim)
+            # mod_args = (
+            #     torch.stack(
+            #         tuple(args[idx] for idx in self.mod_extra_params),
+            #         dim=1,
+            #     )
+            #     .to(bits.device)
+            #     .squeeze(2)
+            # )
+            # print("Hi")
+            # print(mod_args)
+            print(mod_args)
+            print(mod_args.shape)
+            c = self.ReLU(self.map1(mod_args))
+            c = self.map2(c)
+            c = torch.view_as_complex(torch.reshape(c, (2 ** self.m.item(), 2)))
             # To-Do: Need to fix this
             # Generate Constellation mapping c of size 2**m
             # c = self.ReLU(self.map1(snr_dB))
@@ -327,6 +338,7 @@ class ConstellationMapper(torch.nn.Module):
             # influence of weights of first layer
             # and only train bias
             mod_args = torch.zeros((1,), device=bits.device)
+            print(mod_args.shape)
             c = self.ReLU(self.map1(mod_args))
             c = self.map2(c)
             c = torch.view_as_complex(torch.reshape(c, (2 ** self.m.item(), 2)))
