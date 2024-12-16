@@ -226,7 +226,7 @@ def sigma_phi(linewidth, symbolrate):
 
 
 def N0(SNR):
-    r"""Calculate :math:`N_0` from SNR.
+    r"""Calculate :math:`N_0` (lin) from SNR in (dB) under the assumption of math:`P_{sig} = 1`.
 
     :param SNR: signal-to-noise ratio :math:`s` [dB]
     :returns: :math:`10^{-\frac{s}{10}}`
@@ -235,20 +235,21 @@ def N0(SNR):
     return 10 ** (-SNR / 10)
 
 
-def export_constellation(output_file, constellation):
+def export_constellation(output_file, constellation, probabilities):
     """Export a constellation to a csv file.
 
     :param output_file: path to file
     :param constellation: tensor of complex constellation points
+    :param probabilites: tensor of probabilities of the complex constellation points
     :returns:
 
     """
     labels = bits2hex(
         ints2bits(np.arange(len(constellation)), int(np.log2(len(constellation))))
     )
-    result = ["real\timag\tlabel\n"]
-    for point, label in zip(constellation, labels):
-        result.append(f"{point.real}\t{point.imag}\t{label}\n")
+    result = ["no\treal\timag\tprob\tlabel\n"]
+    for no, point, prob, label in zip(np.arange(len(constellation)),constellation,probabilities,labels):
+        result.append(f"{no}\t{point.real}\t{point.imag}\t{prob}\t{label}\n")
     with open(output_file, "w") as result_file:
         result_file.truncate()
         result_file.writelines(result)
