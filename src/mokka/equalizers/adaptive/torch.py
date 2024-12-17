@@ -223,14 +223,14 @@ class CMloss_NxN(torch.nn.Module):
             lr=0.5,  # 0.5e-2,
         )
 
-        cpe_window_length = 1000
+        cpe_window_length = 50
         self.cpe = BPS(
-            100,
+            16,
             demapper.constellation,
             cpe_window_length,
             diff=False,
             temperature_per_epoch=1e-3,
-            no_sectors=1,
+            no_sectors=4,
             avg_filter_type="rect",
             trainable=False,
         )
@@ -359,7 +359,7 @@ class CMloss_NxN(torch.nn.Module):
 
         if self.requires_q == True:
             eq_out = namedtuple("eq_out", ["y", "q", "loss"])
-            return eq_out(out_const, q_hat, loss) #eq_out(torch.cat(out, axis=1), torch.cat(out_q, axis=1), loss)
+            return eq_out(out_q, q_hat, loss) #eq_out(torch.cat(out, axis=1), torch.cat(out_q, axis=1), loss)
         return torch.cat(out, axis=1)
 
     def update_lr(self, new_lr):
