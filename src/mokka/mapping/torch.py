@@ -289,7 +289,6 @@ class ConstellationMapper(torch.nn.Module):
         #     torch.reshape(c, (*b.size()[:-1], 2 ** self.m.item(), 2))
         # )
         # Get constellation
-        print("Hi2")
         c = self.get_constellation(*args)
         # transmit (batchsize x symbols per training sample) symbols
         x = torch.sum(B_hot * c, -1)
@@ -325,8 +324,6 @@ class ConstellationMapper(torch.nn.Module):
             # )
             # print("Hi")
             # print(mod_args)
-            print(mod_args)
-            print(mod_args.shape)
             c = self.ReLU(self.map1(mod_args))
             c = self.map2(c)
             c = torch.view_as_complex(torch.reshape(c, (2 ** self.m.item(), 2)))
@@ -338,7 +335,6 @@ class ConstellationMapper(torch.nn.Module):
             # influence of weights of first layer
             # and only train bias
             mod_args = torch.zeros((1,), device=bits.device)
-            print(mod_args.shape)
             c = self.ReLU(self.map1(mod_args))
             c = self.map2(c)
             c = torch.view_as_complex(torch.reshape(c, (2 ** self.m.item(), 2)))
