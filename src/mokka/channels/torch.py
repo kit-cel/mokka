@@ -73,7 +73,7 @@ class PhasenoiseWiener(torch.nn.Module):
         self.start_phase_init = start_phase_init
         self.start_phase_width = start_phase_width
 
-    def forward(self, x, N0=None, sigma_phi=None):
+    def forward(self, x, N0=None, sigma_phi=None, N_up=1):
         r"""Apply Wiener phase noise to a complex signal.
 
         :param x: ipnut signal to apply noise to
