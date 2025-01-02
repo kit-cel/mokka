@@ -1532,9 +1532,15 @@ class PMDAngleElement(torch.nn.Module):
         theta=True,
         phi=True,
         psi=True,
+        pmd_sigma=None,
     ):
         super(PMDAngleElement, self).__init__()
         # angles are theta, phi, psi
+        if pmd_sigma is None:
+            self.pmd_sigma = 0.0
+        else:
+            self.pmd_sigma = pmd_sigma
+        self.theta, self.phi, self.psi = theta, phi, psi
         if angles is None:
             angles = torch.zeros((3,), dtype=torch.float)
             # torch.nn.init.uniform_(angles, -torch.pi, torch.pi)
@@ -1587,6 +1593,25 @@ class PMDAngleElement(torch.nn.Module):
 
     def forward(self, signal):
         return torch.matmul(self.J_k1, signal)
+
+    def step(self):
+        if self.pmd_sigma == 0.0:
+            return self.J_k1
+        if self.theta:
+            self.angles[0] = (
+                self.angles[0]
+                + torch.zeros((), dtype=torch.float32).normal_() * self.pmd_sigma
+            )
+        if self.phi:
+            self.angles[1] = (
+                self.angles[1]
+                + torch.zeros((), dtype=torch.float32).normal_() * self.pmd_sigma
+            )
+        if self.psi:
+            self.angles[2] = (
+                self.angles[2]
+                + torch.zeros((), dtype=torch.float32).normal_() * self.pmd_sigma
+            )
 
 
 class FixedChannelDP(torch.nn.Module):
