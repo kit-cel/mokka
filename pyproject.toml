@@ -109,19 +109,25 @@ envlist =
     flake8
     black
     pydocstyle
-    py311
-    py312
+    3.10
+    3.11
+    3.12
 
 # See https://tox.readthedocs.io/en/latest/example/package.html#flit
 isolated_build = True
 isolated_build_env = build
-skip_missing_interpreters = False
+skip_missing_interpreters = True
+py_version =
+    3.10, flake8, black, pydocstyle: 3.10
+    3.11: 3.11
+    3.12: 3.12
+
 
 [gh-actions]
 python =
     3.10: flake8, black, pydocstyle, py310
-    3.11: py311
-    3.12: py312
+    3.11: 3.11
+    3.12: 3.12
 
 [testenv]
 # install pytest in the virtualenv where commands will be executed
@@ -140,9 +146,10 @@ extras =
 # see https://tox.readthedocs.io/en/latest/config.html#conf-usedevelop
 usedevelop = False
 commands_pre =
+    poetry env use {[tox]py_version}
     poetry install --with=dev
-commands =
-    pytest {env:PYTEST_MARKERS:} {env:PYTEST_EXTRA_ARGS:} {posargs:-vv}
+command =
+    poetry run pytest {env:PYTEST_MARKERS:} {env:PYTEST_EXTRA_ARGS:} {posargs:-vv}
 
 [testenv:flake8]
 description = this environments checks for flake8 and black
