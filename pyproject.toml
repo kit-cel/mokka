@@ -109,9 +109,8 @@ envlist =
     flake8
     black
     pydocstyle
-    py39
-    py310
     py311
+    py312
 
 # See https://tox.readthedocs.io/en/latest/example/package.html#flit
 isolated_build = True
@@ -123,10 +122,12 @@ python =
     3.10: flake8, black, pydocstyle, py310
     3.11: py311
     3.12: py312
-    3.13d py313
 
 [testenv]
 # install pytest in the virtualenv where commands will be executed
+allowlist_externals =
+    poetry
+    bash
 setenv =
     PYTHONUNBUFFERED = yes
     PIP_PREFER_BINARY = 1
@@ -138,6 +139,9 @@ extras =
 # to remind ourselves that usedevelop is incompatible with flit,
 # see https://tox.readthedocs.io/en/latest/config.html#conf-usedevelop
 usedevelop = False
+commands_pre =
+    bash -c 'poetry export --with dev --without-hashes -f requirements.txt | grep -v "^[mM]okka==" > .requirements.txt'
+    poetry run pip install --no-deps -r .requirements.txt
 commands =
     pytest {env:PYTEST_MARKERS:} {env:PYTEST_EXTRA_ARGS:} {posargs:-vv}
 
