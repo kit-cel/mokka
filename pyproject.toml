@@ -140,8 +140,7 @@ extras =
 # see https://tox.readthedocs.io/en/latest/config.html#conf-usedevelop
 usedevelop = False
 commands_pre =
-    bash -c 'poetry export --with dev --without-hashes -f requirements.txt | grep -v "^[mM]okka==" > .requirements.txt'
-    poetry run pip install --no-deps -r .requirements.txt
+    poetry install --with=dev
 commands =
     pytest {env:PYTEST_MARKERS:} {env:PYTEST_EXTRA_ARGS:} {posargs:-vv}
 
