@@ -30,11 +30,11 @@ jobs:
       run: |
         poetry config virtualenvs.create true --local
         poetry config virtualenvs.in-project true --local
-    - uses: actions/cache@v3
-      name: Define a cache for the virtual environment based on the dependencies lock file
-      with:
-        path: ./.venv
-        key: venv-${{ hashFiles('poetry.lock') }}
+    # - uses: actions/cache@v3
+    #   name: Define a cache for the virtual environment based on the dependencies lock file
+    #   with:
+    #     path: ./.venv
+    #     key: venv-${{ hashFiles('poetry.lock') }}
     - name: Install the project dependencies
       run: poetry install --with=dev
     - name: Run the automated tests (for example)
