@@ -10,7 +10,7 @@ from sphinx_pyproject import SphinxConfig
 
 module_dir = os.path.join(os.path.dirname(__file__), "../src/mokka")
 
-config = SphinxConfig("../pyproject.toml", globalns=globals())
+config = SphinxConfig("../pyproject.toml", globalns=globals(), style="poetry")
 
 author=config.author
 project=config.name
