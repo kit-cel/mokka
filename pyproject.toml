@@ -125,7 +125,7 @@ py_version =
 
 [gh-actions]
 python =
-    3.10: flake8, black, pydocstyle, py310
+    3.10: flake8, black, pydocstyle, 3.10
     3.11: 3.11
     3.12: 3.12
 
