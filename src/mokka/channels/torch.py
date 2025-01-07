@@ -831,7 +831,8 @@ class SSFMPropagationDualPol(torch.nn.Module):
         else:
             raise ValueError("Unknown solution method.")
 
-        # To simulate PMD initialize PMDElements to be uniformly distributed on the Poincare sphere
+        # To simulate PMD initialize PMDElements to be uniformly distributed
+        # on the Poincare sphere
         # For static PMD this does not change
         # For dynamic PMD the SOP performs a random walk on the Poincare sphere
 
@@ -1018,7 +1019,8 @@ class SSFMPropagationDualPol(torch.nn.Module):
                     logger.debug("pmd index: %s", pmd_index)
                     pmd_indices.append(pmd_index)
                     pmd_element = self.pmd_elements[span][pmd_index]
-                    # Calculate beta1 for both polarizations to simulate DGD for this segment
+                    # Calculate beta1 for both polarizations to simulate DGD for
+                    # this segment
                     # Simulate DGD by retarding pola and advancing polb
                     dgd_dz = pmd_element.DGD_sec * 2 * dz / self.pmd_correlation_length
                     self.betapa[1] = -dgd_dz / 2.0
@@ -1096,19 +1098,22 @@ class SSFMPropagationDualPol(torch.nn.Module):
                     u1c, u2c = symmetrical_SSPROPV_step(
                         u1, u2, h11_dz, h12_dz, h21_dz, h22_dz, NOP2dz
                     )
-                    # Compute the difference between propagation with new_dz and 2*new_dz
+                    # Compute the difference between propagation with new_dz
+                    # and 2*new_dz
                     delta = (
                         torch.linalg.vector_norm(u1f - u1c)
                         + torch.linalg.vector_norm(u2f - u2c)
                     ) / (torch.linalg.vector_norm(u1f) + torch.linalg.vector_norm(u2f))
                     # logger.info("dz is %s, delta is %s", dz.item(), delta.item())
 
-                    # If the error of 2*new_dz and new_dz steps is too large, reduce stepsize and rerun this step
+                    # If the error of 2*new_dz and new_dz steps is too large,
+                    # reduce stepsize and rerun this step
                     if delta > 2 * self.delta_G:
                         new_dz = dz / 2
                         good_sol_flag = False
                         iter = iter + 1
-                    # If the error of 2*new_dz and new_dz steps is OK, reduce stepsize for next step
+                    # If the error of 2*new_dz and new_dz steps is OK,
+                    # reduce stepsize for next step
                     elif self.delta_G <= delta <= 2 * self.delta_G:
                         new_dz = dz / 1.259921049894873
                     # If the error is really small, increase stepsize for next step
@@ -1576,8 +1581,8 @@ class PDLElement(torch.nn.Module):
         """
         Construct a PDL element which exhibits a differential linear
         attenuation of rho. To get the attenuation matrix Gamma we
-        first set attenuation of one polarization to sqrt(1+rho) and the other to sqrt(1-rho)
-        and then rotate
+        first set attenuation of one polarization to sqrt(1+rho)
+        and the other to sqrt(1-rho) and then rotate
         the matrix with a random rotation matrix uniform in Stokes space.
 
         :param rho: PDL in linear units
@@ -1696,7 +1701,7 @@ class PMDPDLChannel(torch.nn.Module):
         self.pmd_elements = [
             PMDElement(pmd_sigma, pmd_parameter, L, num_steps) for _ in range(num_steps)
         ]
-        dgdsec = torch.as_tensor([p_e.DGD_sec for p_e in self.pmd_elements])
+        # dgdsec = torch.as_tensor([p_e.DGD_sec for p_e in self.pmd_elements])
         for p_e in self.pmd_elements:
             logger.debug("DGD sec: %s", p_e.DGD_sec)
         self.pmd_correlation_length = pmd_correlation_length
