@@ -234,8 +234,8 @@ class ConstellationMapper(torch.nn.Module):
         """
         Perform mapping of bitstrings.
 
-        By specifying one_hot=true symbol-wise geometric constellation shaping is possible
-        calculating the loss w.r.t MI after demapping.
+        By specifying one_hot=true symbol-wise geometric constellation
+        shaping is possible calculating the loss w.r.t MI after demapping.
 
         :params b: input to ConstellationMapper either bits or one-hot vectors
         :params one_hot: specify if b is a one-hot vector
@@ -1148,6 +1148,6 @@ def MB_dist(lmbd, symbols):
     :params lambda: Lambda parameter of the Maxwell-Boltzmann distribution
     :params symbols: Complex constellation symbols
     """
-    mb_nist = torch.exp(-lmbd * torch.abs(symbols) ** 2)
+    mb_dist = torch.exp(-lmbd * torch.abs(symbols) ** 2)
     mb_dist_norm = mb_dist / torch.sum(mb_dist)
     return mb_dist_norm

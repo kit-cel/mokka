@@ -41,7 +41,9 @@ class CD_compensation(torch.nn.Module):
 
 
 class LinearFilter(torch.nn.Module):
-    """Class implementing a SISO linear filter, optionally with trainable filter_taps."""
+    """Class implementing a SISO linear filter.
+
+    Optionally with trainable filter_taps."""
 
     def __init__(
         self,
@@ -109,9 +111,9 @@ class Butterfly2x2(torch.nn.Module):
             filter_taps = taps
             self.num_taps = taps.size()[1]
         # We store h_xx, h_xy, h_yy, h_yx
-        if trainable == True:
+        if trainable:
             self.register_parameter("taps", torch.nn.Parameter(filter_taps))
-        elif trainable == False:
+        elif trainable:
             self.register_buffer("taps", filter_taps)
         else:
             raise ValueError("trainable must be set to either True or False.")
@@ -278,7 +280,8 @@ def correct_start_polarization(
         dim=0,
     )
     max_values, time_offsets = torch.max(torch.abs(cross_corr), dim=1, keepdim=True)
-    # Check if the two maximum values in regular polarization are flipped compare the sum of the maximum values
+    # Check if the two maximum values in regular polarization are flipped compare
+    # the sum of the maximum values
 
     if not correct_polarization or (
         max_values[0] + max_values[1] > max_values[2] + max_values[3]
@@ -343,7 +346,8 @@ def correct_start(signal, pilot_signal, correct_static_phase=False):
         "valid",
     )
     max_value, time_offset = torch.max(torch.abs(cross_corr), dim=0, keepdim=True)
-    # Check if the two maximum values in regular polarization are flipped compare the sum of the maximum values
+    # Check if the two maximum values in regular polarization are flipped compare
+    # the sum of the maximum values
 
     if correct_static_phase:
         static_phase_shift = torch.angle(max_value)
@@ -495,7 +499,8 @@ def h2f(h, N0):
     (depending on the setting of N0) and return the filter taps
     for f
 
-    :param h: impulse response in time domain h_{t,m,r} for each user/transmit/receive combination
+    :param h: impulse response in time domain h_{t,m,r} for each user/transmit/receive
+      combination
     :param N0: white noise at receiver
     """
     H_compound = torch.zeros(
@@ -531,7 +536,6 @@ def h2f(h, N0):
                     rxid * (h.shape[3] + 1) : (rxid + 1) * (h.shape[3] + 1),
                 ]
                 F_split[txid, uid, rxid, :] = f.view(1, 1, 1, -1).clone()
-                #                F_split = F.reshape((h.shape[0], h.shape[1], h.shape[2], h.shape[3] + 1))
     return F_split
 
 
