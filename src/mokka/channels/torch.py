@@ -1570,7 +1570,8 @@ class FixedChannelSP(torch.nn.Module):
         """
         Initialize :py:class:`FixedChannelSP`.
 
-        :param impulse_response: 1xN vector of complex time-domain samples of the impulse response
+        :param impulse_response: 1xN vector of complex time-domain samples of
+          the impulse response
         """
         super(FixedChannelSP, self).__init__()
         self.impulse_response = torch.as_tensor(impulse_response)
