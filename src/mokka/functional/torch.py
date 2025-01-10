@@ -171,9 +171,7 @@ def unwrap_torch(*args):
 
 
 def Jones2Mueller(J):
-    """
-    Takes a 2x2 complex Jones matrix and returns a 4x4 real Mueller matrix
-    """
+    """Take a 2x2 complex Jones matrix and return a 4x4 real Mueller matrix."""
     # point-wise multiply
     U = (
         1

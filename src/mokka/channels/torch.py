@@ -1,4 +1,5 @@
 """Channels sub-module implemented within the PyTorch framework."""
+
 import torch
 
 import torchaudio
@@ -968,7 +969,6 @@ class SSFMPropagationDualPol(torch.nn.Module):
         :param uy: input signal in y-polarization.
         :returns: signal at the end of the fiber
         """
-
         w = (2 * torch.pi * torch.fft.fftfreq(ux.shape[0], self.dt * 1e12)).to(
             self.betapa.device
         )  # THz
@@ -1380,7 +1380,7 @@ class WDMDemux(torch.nn.Module):
 
 class PMDElement(torch.nn.Module):
     """
-    Static and dynamic PMD Element according to Czegledi (2016)
+    Static and dynamic PMD Element according to Czegledi (2016).
 
     Note: for SSFM only static PMD is correct
     """
@@ -1388,6 +1388,17 @@ class PMDElement(torch.nn.Module):
     def __init__(
         self, sigma_p, pmd_parameter, span_length, steps_per_span, method="static"
     ):
+        """
+        Initialize :py:class:`PMDElement`.
+
+        :param sigma_p: Variance of time-varying Wiener process
+        :param pmd_parameter: Calculate second moment of the DGD based
+          on the PMD parameter
+        :param span_length: Length of each span of optical fiber
+        :param steps_per_span: Simulation steps per span
+        :param method: Either "static" or "dynamic" - sets the mode
+          to either time-varying or fixed in time
+        """
         super(PMDElement, self).__init__()
         # Apply PMD using matrix J_k which can be calculated from J(\alpha_k)
         # Pauli spin matrices
@@ -1420,14 +1431,17 @@ class PMDElement(torch.nn.Module):
 
     @property
     def a(self):
+        """Calculate and return parameters a."""
         return self.alpha / self.theta
 
     @property
     def theta(self):
+        """Calculate theta as norm of vector alpha."""
         return torch.linalg.vector_norm(self.alpha)
 
     @property
     def J(self):
+        """Calculate the Jones matrix of the rotation portion."""
         return torch.matmul(
             torch.eye(2, dtype=torch.complex64) * torch.cos(self.theta)
             - 1j
@@ -1437,6 +1451,7 @@ class PMDElement(torch.nn.Module):
         )
 
     def step(self):
+        """Perform one time-step for the time-varying simulation and return `J_k1`."""
         if self.sigma_p == 0.0:
             return self.J_k1
         self.alpha = torch.zeros((3,), dtype=torch.float32).normal_() * self.sigma_p
@@ -1444,6 +1459,7 @@ class PMDElement(torch.nn.Module):
         return self.J_k1
 
     def steps(self, k=1):
+        """Perform `k` time-varying steps and return the Jones matrices."""
         if self.sigma_p == 0.0:
             return self.J_k1.expand(k, -1, -1)
         alphas = torch.zeros((k, 3), dtype=torch.float32).normal_() * self.sigma_p
@@ -1461,9 +1477,11 @@ class PMDElement(torch.nn.Module):
         return torch.stack(results)
 
     def forward_static(self, signal: torch.Tensor):
+        """Apply the static PMD simulation to the input signal."""
         return torch.matmul(self.J_k1, signal)
 
     def forward_dynamic(self, signal: torch.Tensor):
+        """Apply the time-varying PMD simulation to the input signal."""
         num_steps = signal.shape[1]
         J_k = self.steps(num_steps)
         signal_out = torch.bmm(J_k, signal.unsqueeze(-1)).squeeze()
@@ -1482,16 +1500,23 @@ class PMDElement(torch.nn.Module):
 
 
 class FixedChannelDP(torch.nn.Module):
-    """
-    Apply a fixed channel impulse response on both polarization separately
-    """
+    """Apply a fixed channel impulse response on both polarization separately."""
 
     def __init__(self, impulse_response):
+        """
+        Initialize :py:class:`FixedChannelDP`.
+
+        :param impulse_response: single polarization impulse response
+        """
         super(FixedChannelDP, self).__init__()
 
         self.impulse_response = torch.as_tensor(impulse_response)
 
     def forward(self, tx_signal):
+        """Apply static dual polarization signal to `tx_signal`.
+
+        :param tx_signal: dual polarization input signal
+        """
         return torch.cat(
             (
                 convolve(tx_signal[0, :], self.impulse_response, mode="full").unsqueeze(
@@ -1507,15 +1532,23 @@ class FixedChannelDP(torch.nn.Module):
 
 class FixedArbitraryChannelDP(torch.nn.Module):
     """
-    Apply a fixed channel impulse response on both polarization separately
+    Apply a fixed 2x2 channel impulse response to a dual polarization signal.
+
+    This class only implements a time-invariant dual-polarization channel.
     """
 
     def __init__(self, impulse_response):
+        """
+        Initialize :py:class:`FixedArbitraryChannelDP`.
+
+        :param impulse_response: arbitrary 2x2 impulse response.
+        """
         super(FixedArbitraryChannelDP, self).__init__()
 
         self.impulse_response = torch.as_tensor(impulse_response)
 
     def forward(self, tx_signal):
+        """Apply arbitrary dual polarization channel to `tx_signal`."""
         return torch.stack(
             (
                 convolve(tx_signal[0, :], self.impulse_response[0, :], mode="full")
@@ -1528,18 +1561,43 @@ class FixedArbitraryChannelDP(torch.nn.Module):
 
 class FixedChannelSP(torch.nn.Module):
     """
-    Apply a fixed channel impulse response for a single polarization
+    Apply a fixed channel impulse response to a single polarization input signal.
+
+    This class only implements a time-invariant single-polarization channel.
     """
 
     def __init__(self, impulse_response):
+        """
+        Initialize :py:class:`FixedChannelSP`.
+
+        :param impulse_response: 1xN vector of complex time-domain samples of the impulse response
+        """
         super(FixedChannelSP, self).__init__()
         self.impulse_response = torch.as_tensor(impulse_response)
 
     def forward(self, tx_signal):
+        """
+        Apply fixed single-polarization channel on `tx_signal`.
+
+        :param tx_signal: Single polarization complex signal vector
+        """
         return convolve(tx_signal, self.impulse_response, mode="full")
 
 
 def ProakisChannel(variant, sps=1):
+    """
+    Return impulse response for channels defined in [0].
+
+    :param variant: Either "a", "b", "c" or "a_complex".
+      In the literature all channels are real-valued. The complex channel "a_complex"
+      is an extension of the "a" channel by applying a phase rotation of the given
+      samples.
+    :param sps: samples-per-symbol choosing an integer value greater than 1 will
+      add sps-1 zeros in-between the channel given channel taps. No band-limiting filter
+      is applied subsequently.
+
+    [0] Proakis, John G., and Masoud Salehi. Digital communications. McGraw-hill, 2008.
+    """
     if variant == "a":
         h = torch.tensor(
             [0.04, -0.05, 0.07, -0.21, -0.5, 0.72, 0.36, 0.0, 0.21, 0.03, 0.07],
@@ -1574,12 +1632,17 @@ def ProakisChannel(variant, sps=1):
 
 class PDLElement(torch.nn.Module):
     """
-    Simulate PDL in optical channels
+    Simulate PDL in optical channels.
+
+    This class applies PDL which is randomly rotated w.r.t to
+    the input signal.
     """
 
     def __init__(self, rho):
         """
-        Construct a PDL element which exhibits a differential linear
+        Construct a PDL element.
+
+        It exhibits a differential linear
         attenuation of rho. To get the attenuation matrix Gamma we
         first set attenuation of one polarization to sqrt(1+rho)
         and the other to sqrt(1-rho) and then rotate
@@ -1598,6 +1661,7 @@ class PDLElement(torch.nn.Module):
         self.Gamma = rot @ Gamma
 
     def forward(self, signal):
+        """Apply time-invariant PDL by mutiplying input signal and Jones matrix."""
         return torch.matmul(self.Gamma, signal)
 
 
@@ -1610,6 +1674,16 @@ class DPImpairments(torch.nn.Module):
     """
 
     def __init__(self, samp_rate, tau_cd, tau_pmd, phi_IQ, theta, rho=0):
+        r"""
+        Initialize py:class:`DPImpairments`.
+
+        :param samp_rate: sampling rate of the input signal
+        :param tau_cd: Residual chromatic dispersion coefficient \tau_{cd}
+        :param tau_pmd: Residual polarization-mode dispersion coefficient \tau_{pmd}
+        :param phi_IQ: Phase rotation \phi_{IQ}
+        :param theta: Polarization angle \theta
+        :param rho: Polarization angle \rho
+        """
         super(DPImpairments, self).__init__()
         self.samp_rate = torch.as_tensor(samp_rate)
         self.tau_cd = torch.as_tensor(tau_cd)
@@ -1621,7 +1695,7 @@ class DPImpairments(torch.nn.Module):
 
     def forward(self, signal):
         """
-        Apply DPImpairment to a dual polarization signal
+        Apply DPImpairment to a dual polarization signal.
 
         :param signal: Must be a 2xN complex-valued PyTorch tensor
         """
@@ -1677,9 +1751,7 @@ class DPImpairments(torch.nn.Module):
 
 
 class PMDPDLChannel(torch.nn.Module):
-    """
-    Optical channel with only PMD and PDL impairments.
-    """
+    """Optical channel with only PMD and PDL impairments."""
 
     def __init__(
         self,
@@ -1694,6 +1766,20 @@ class PMDPDLChannel(torch.nn.Module):
         pdl_min=0.1,
         method="freq",
     ):
+        """
+        Initialize :py:class:`PMDPDLChannel`.
+
+        :param L:
+        :param num_steps:
+        :param pmd_parameter:
+        :param pmd_correlation_length:
+        :param f_samp:
+        :param pmd_sigma:
+        :param num_pdl_elements:
+        :param pdl_max:
+        :param pdl_min:
+        :param method:
+        """
         super(PMDPDLChannel, self).__init__()
         self.dz = torch.as_tensor(L / num_steps)
         self.dt = 1.0 / f_samp
@@ -1720,10 +1806,19 @@ class PMDPDLChannel(torch.nn.Module):
         self.method = method
 
     def step(self):
+        """Propagate the PMD Elements in time.
+
+        Only relevant for time-variant PMD.
+        """
         for pe in self.pmd_elements:
             _ = pe.step()
 
     def forward(self, u):
+        """
+        Apply Channel to input signal.
+
+        :param u: Dual-polarization complex input signal
+        """
         if self.method == "freq":
             return self.forward_freq(u)
         elif self.method == "time":
@@ -1732,6 +1827,11 @@ class PMDPDLChannel(torch.nn.Module):
             raise ValueError("self.method must be either freq or time")
 
     def forward_time(self, u):
+        """
+        Apply channel in time domain.
+
+        :param u: Dual-polarization complex input signal
+        """
         w = (2 * torch.pi * torch.fft.fftfreq(u.shape[1], self.dt * 1e12)).to(
             self.betapa.device
         )  # THz
@@ -1765,6 +1865,11 @@ class PMDPDLChannel(torch.nn.Module):
         return u
 
     def forward_freq(self, u):
+        """
+        Apply channel in frequency domain.
+
+        :param u: Dual-polarization complex input signal
+        """
         # We perform the full simulation in the frequency domain
         u_f = torch.fft.fft(u, dim=1)
         u_f = self._forward_freq(u_f)
@@ -1772,6 +1877,11 @@ class PMDPDLChannel(torch.nn.Module):
         return u
 
     def _forward_freq(self, u_f):
+        """
+        Apply the channel on the signal already in f-domain.
+
+        :param u_f: Dual-polarization complex input signal in frequency domain.
+        """
         w = (2 * torch.pi * torch.fft.fftfreq(u_f.shape[1], self.dt * 1e12)).to(
             self.betapa.device
         )  # THz
@@ -1803,6 +1913,12 @@ class PMDPDLChannel(torch.nn.Module):
         return u_f
 
     def channel_transfer(self, length, pulse_shape=None):
+        """
+        Compute the 2x2 channel transfer function.
+
+        :param length: One-sided length of the desired impulse response
+        :param pulse_shape: Shaping to apply to the window function
+        """
         phase_shift = 2 * torch.pi * torch.fft.fftfreq(length, 1) * (length // 2 + 1)
         u_f = torch.zeros((2, length), dtype=torch.complex64)
         u_f[0, :] = torch.ones(length, dtype=torch.complex64) * torch.exp(

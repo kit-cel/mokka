@@ -43,7 +43,8 @@ class CD_compensation(torch.nn.Module):
 class LinearFilter(torch.nn.Module):
     """Class implementing a SISO linear filter.
 
-    Optionally with trainable filter_taps."""
+    Optionally with trainable filter_taps.
+    """
 
     def __init__(
         self,

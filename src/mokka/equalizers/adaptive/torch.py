@@ -605,7 +605,7 @@ class PilotAEQ_DP(torch.nn.Module):
 
     def forward(self, y):
         """
-        Equalize input signal y
+        Equalize input signal y.
 
         :param y: Complex receive signal y
         """
@@ -818,7 +818,9 @@ class PilotAEQ_DP(torch.nn.Module):
 
 class PilotAEQ_SP(torch.nn.Module):
     """
-    Perform pilot-based adaptive equalization (QPSK)
+    Perform pilot-based adaptive equalization (QPSK).
+
+    This class performs the adaptive equalization for a single polarization.
     """
 
     def __init__(
@@ -853,7 +855,7 @@ class PilotAEQ_SP(torch.nn.Module):
         self.method = method
 
     def reset(self):
-        """Reset :py:class:`PilotAEQ_SP`"""
+        """Reset :py:class:`PilotAEQ_SP`."""
         self.taps.zero_()
         self.taps[self.taps.size()[0] // 2] = 1.0
 
@@ -956,10 +958,12 @@ class AEQ_SP(torch.nn.Module):
         # Do some clever initalization, first only equalize x-pol and then enable y-pol
 
     def reset(self):
+        """Reset :py:class:`AEQ_SP`."""
         self.taps.zero_()
         self.taps[self.taps.shape[0] // 2] = 1.0
 
     def forward(self, y):
+        """Perform adaptive equalization."""
         # Implement CMA "by hand"
         # Basically step through the signal advancing always +sps symbols
         # and filtering 2*filter_len samples which will give one output sample with
@@ -995,4 +999,5 @@ class AEQ_SP(torch.nn.Module):
         return out
 
     def get_error_signal(self):
+        """Extract the error signal."""
         return self.out_e
