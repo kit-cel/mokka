@@ -5,6 +5,7 @@ from ..torch import correct_start_polarization, correct_start
 from ...functional.torch import convolve_overlap_save
 from ..torch import h2f
 from mokka.synchronizers.phase.torch import BPS, vandv
+from mokka.functional.torch import unwrap
 import torch
 import logging
 from collections import namedtuple
@@ -573,6 +574,7 @@ class MSEloss_NxN(torch.nn.Module):
         lr=0.5e-2,
         requires_q=False,
         IQ_separate=False,
+        use_cpe=False,
         device="cpu",
         mode="valid",
     ):
@@ -586,6 +588,7 @@ class MSEloss_NxN(torch.nn.Module):
         self.register_buffer("num_taps", torch.as_tensor(num_taps))
         self.register_buffer("requires_q", torch.as_tensor(requires_q))
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
+        self.register_buffer("use_cpe", torch.as_tensor(use_cpe))
         self.mode = mode
         
         self.loss_func = torch.nn.MSELoss()
@@ -607,6 +610,21 @@ class MSEloss_NxN(torch.nn.Module):
             [self.demapper.noise_sigma],
             lr=0.5,  # 0.5e-2,
         )
+
+        cpe_window_length = 50
+        self.cpe = BPS(
+            16,
+            demapper.constellation,
+            cpe_window_length,
+            diff=False,
+            temperature_per_epoch=1e-3,
+            no_sectors=4,
+            avg_filter_type="rect",
+            trainable=False,
+        )
+        # self.cpe = vandv.ViterbiViterbi(
+        #                 window_length=cpe_window_length
+        #             )
 
     def reset(self):
         self.lr = self.start_lr.clone()
@@ -705,7 +723,20 @@ class MSEloss_NxN(torch.nn.Module):
             #ref_index = in_index[ (self.butterfly_forward.num_taps - 1) : ] + (self.butterfly_forward.num_taps + 1)*self.sps + 86
             temp_ref = ref_up[:,y_index]
             ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)
-            loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
+
+            
+            if self.use_cpe == True:
+                # phi_off = (torch.angle(y_symb) - torch.angle(ref)).detach()
+                # phi_ma = torch.zeros_like(phi_off)[:,:-50]
+                # for i in range(50):
+                #     phi_ma += phi_off[:,i:-(50-i)]/50
+                # ref[:,25:-25] *= torch.exp(unwrap(phi_ma)) 
+                # loss = self.loss_func( y_symb[:,25:-25].real, ref[:,25:-25].real ) + self.loss_func( y_symb[:,25:-25].imag, ref[:,25:-25].imag)
+                # for cc in range(self.num_channels):
+                #     ref[cc,:] *= torch.exp(1j*self.cpe(y_symb[cc,:])[1])    # rotate reference to make update independet of phase noise
+                loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
+            else:
+                loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
 
             # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
@@ -728,10 +759,50 @@ class MSEloss_NxN(torch.nn.Module):
         # print("loss: ", loss, "\t\t\t var: ", var)
         # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
 
+        out_const = torch.cat(out, axis=1).detach().clone()
+        out_const *= (torch.sqrt(torch.mean(torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
+
+        if self.use_cpe == True:
+            for cc in range(self.num_channels):
+                out_const[cc,:] = self.cpe(out_const[cc,:])[0]
+            if self.IQ_separate == True:
+                num_level = self.demapper.constellation.shape[-1]
+                q_hat = torch.zeros(
+                    out_const.shape[0],
+                    out_const.shape[1],
+                    2 * num_level,
+                    device=out_const.device,
+                    dtype=torch.float32,
+                )
+                for out_chan in range(out_const.shape[0]):
+                    q_hat[out_chan, :, :num_level] = self.demapper(
+                        out_const[out_chan, :].real
+                    ).unsqueeze(0)
+                    q_hat[out_chan, :, num_level:] = self.demapper(
+                        out_const[out_chan, :].imag
+                    ).unsqueeze(0)
+            else:
+                q_hat = torch.zeros(
+                    out_const.shape[0],
+                    out_const.shape[1],
+                    self.demapper.constellation.shape[-1],
+                    device=out_const.device,
+                    dtype=torch.float32,
+                )
+                for out_chan in range(out_const.shape[0]):
+                    q_hat[out_chan, :, :] = self.demapper(
+                        out_const[out_chan, :]
+                    ).unsqueeze(0)
+        else:
+            q_hat = torch.cat(out_q, axis=1)
+
+        # print("loss: ", loss, "\t\t\t var: ", var)
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+
         if self.requires_q == True:
             eq_out = namedtuple("eq_out", ["y", "q", "loss"])
-            return eq_out(torch.cat(out, axis=1), torch.cat(out_q, axis=1), loss)
-        return torch.cat(out, axis=1)
+            return eq_out(out_const, q_hat, loss)
+        return out_const
 
     def update_lr(self, new_lr):
         self.lr = new_lr
@@ -1554,6 +1625,7 @@ class VAE_LE_NxN(torch.nn.Module):
         requires_q=False,
         IQ_separate=False,
         var_from_estimate=False,
+        use_cpe=False,
         device="cpu",
         mode="valid",
     ):
@@ -1569,6 +1641,7 @@ class VAE_LE_NxN(torch.nn.Module):
         self.register_buffer("requires_q", torch.as_tensor(requires_q))
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.register_buffer("var_from_estimate", torch.as_tensor(var_from_estimate))
+        self.register_buffer("use_cpe", torch.as_tensor(use_cpe))
         self.mode = mode
         self.butterfly_forward = ButterflyNxN(
             num_taps=num_taps_forward,
@@ -1597,6 +1670,21 @@ class VAE_LE_NxN(torch.nn.Module):
             [self.demapper.noise_sigma],
             lr=0.5,  # 0.5e-2,
         )
+
+        cpe_window_length = 50
+        self.cpe = BPS(
+            16,
+            demapper.constellation,
+            cpe_window_length,
+            diff=False,
+            temperature_per_epoch=1e-3,
+            no_sectors=4,
+            avg_filter_type="rect",
+            trainable=False,
+        )
+        # self.cpe = vandv.ViterbiViterbi(
+        #                 window_length=cpe_window_length
+        #             )
 
     def reset(self):
         self.lr = self.start_lr.clone()
@@ -1735,13 +1823,50 @@ class VAE_LE_NxN(torch.nn.Module):
             output_q = q_hat[:, : self.block_size, :]
             out_q.append(output_q)
 
+        out_const = torch.cat(out, axis=1).detach()#.clone()
+        out_const *=  (torch.sqrt(torch.mean(torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
+
+        if self.use_cpe == True:
+            for cc in range(self.num_channels):
+                out_const[cc,:] = self.cpe(out_const[cc,:])[0]
+            if self.IQ_separate == True:
+                num_level = self.demapper.constellation.shape[-1]
+                q_hat = torch.zeros(
+                    out_const.shape[0],
+                    out_const.shape[1],
+                    2 * num_level,
+                    device=out_const.device,
+                    dtype=torch.float32,
+                )
+                for out_chan in range(out_const.shape[0]):
+                    q_hat[out_chan, :, :num_level] = self.demapper(
+                        out_const[out_chan, :].real
+                    ).unsqueeze(0)
+                    q_hat[out_chan, :, num_level:] = self.demapper(
+                        out_const[out_chan, :].imag
+                    ).unsqueeze(0)
+            else:
+                q_hat = torch.zeros(
+                    out_const.shape[0],
+                    out_const.shape[1],
+                    self.demapper.constellation.shape[-1],
+                    device=out_const.device,
+                    dtype=torch.float32,
+                )
+                for out_chan in range(out_const.shape[0]):
+                    q_hat[out_chan, :, :] = self.demapper(
+                        out_const[out_chan, :]
+                    ).unsqueeze(0)
+        else:
+            q_hat = torch.cat(out_q, axis=1)
+
         # print("loss: ", loss, "\t\t\t var: ", var)
         # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
 
         if self.requires_q == True:
             eq_out = namedtuple("eq_out", ["y", "q", "var", "loss"])
-            return eq_out(torch.cat(out, axis=1), torch.cat(out_q, axis=1), var, loss)
-        return torch.cat(out, axis=1)
+            return eq_out(out_const, q_hat, var, loss)
+        return out_const
 
     def update_lr(self, new_lr):
         self.lr = new_lr

@@ -83,7 +83,9 @@ class PhasenoiseWiener(torch.nn.Module):
         """
         if N0 is not None:
             x = self.awgn(x, N0)
-        x = self.apply(x, sigma_phi)
+        # for upsampled data, the variance per sample is reduced by N_up
+        sigma_phi_samp = sigma_phi / np.sqrt(N_up)
+        x = self.apply(x, sigma_phi_samp)
         logger.debug("x size: %s", x.size())
         return x
 
@@ -98,20 +100,26 @@ class PhasenoiseWiener(torch.nn.Module):
         sigma_phi: float
            phase noise variance
         """
-        x = torch.squeeze(x)
-        logger.debug("sigma_phi: %s", sigma_phi.item())
-        sigma_phi_temp = sigma_phi
+        # x = torch.squeeze(x)
+        # logger.debug("sigma_phi: %s", sigma_phi.item())
+        # sigma_phi_temp = sigma_phi
 
-        # "Physical" Channel
-        delta_phi = sigma_phi_temp * torch.randn(
-            len(x), device=x.device, dtype=torch.float32
-        )
-        phi = torch.cumsum(delta_phi, 0) + (
-            self.start_phase_init
-            + torch.rand(1, device=x.device, dtype=torch.float32)
-            * self.start_phase_width
-        )
-        x = x * torch.exp(1j * phi)
+        # # "Physical" Channel
+        # delta_phi = sigma_phi_temp * torch.randn(
+        #     len(x), device=x.device, dtype=torch.float32
+        # )
+        # phi = torch.cumsum(delta_phi, 0) + (
+        #     self.start_phase_init
+        #     + torch.rand(1, device=x.device, dtype=torch.float32)
+        #     * self.start_phase_width
+        # )
+        phi = self.sample_noise(x,sigma_phi=sigma_phi)
+        if x.ndim == 2:
+            x = x * torch.exp(1j * phi).unsqueeze(1)
+        elif x.ndim == 1:
+            x = x * torch.exp(1j * phi)
+        else:
+            raise ValueError("x is expected to have either one or two dimensions (multiple channels with same phase noise).")
         logger.debug("x size: %s", x.size())
         return x
 
@@ -141,6 +149,14 @@ class PhasenoiseWiener(torch.nn.Module):
         )
         logger.debug("x size: %s", x.size())
         return phi
+    
+    def interpolateBy2_phase_noise(self, phi, sigma_phi=None):
+        phi_up = torch.zeros(phi.shape[-1], device=phi.device, dtype = phi.dtype)
+        phi_up[0::2] = phi
+        phi_up[1::2] = (phi[::2] + phi[1::2])/2 + 0.5*sigma_phi*torch.randn(
+            phi.shape[-1], device=phi.device, dtype=torch.float32
+        )
+        return phi_up
 
 
 class ResidualPhaseNoise(torch.nn.Module):
