@@ -589,6 +589,8 @@ class MSEloss_NxN(torch.nn.Module):
         self.register_buffer("requires_q", torch.as_tensor(requires_q))
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.register_buffer("use_cpe", torch.as_tensor(use_cpe))
+
+        self.register_buffer("N_phi_ave", torch.as_tensor(10))      # 50 at code of IPQ
         self.mode = mode
         
         self.loss_func = torch.nn.MSELoss()
@@ -722,19 +724,21 @@ class MSEloss_NxN(torch.nn.Module):
             ]
             #ref_index = in_index[ (self.butterfly_forward.num_taps - 1) : ] + (self.butterfly_forward.num_taps + 1)*self.sps + 86
             temp_ref = ref_up[:,y_index]
-            ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)
+            ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again 
 
             
             if self.use_cpe == True:
-                # phi_off = (torch.angle(y_symb) - torch.angle(ref)).detach()
-                # phi_ma = torch.zeros_like(phi_off)[:,:-50]
-                # for i in range(50):
-                #     phi_ma += phi_off[:,i:-(50-i)]/50
-                # ref[:,25:-25] *= torch.exp(unwrap(phi_ma)) 
-                # loss = self.loss_func( y_symb[:,25:-25].real, ref[:,25:-25].real ) + self.loss_func( y_symb[:,25:-25].imag, ref[:,25:-25].imag)
+                N_phi_ave = self.N_phi_ave
+                phi_off = (torch.angle(y_symb) - torch.angle(ref)).detach() # unwrap necessary?
+                y_phi_sum = torch.zeros_like(y_symb)[:,:-N_phi_ave]
+                for i in range(N_phi_ave):
+                    y_phi_sum += torch.exp(1j*phi_off[:,i:-(N_phi_ave-i)])    # sum in the complex domain
+                phi_ma = torch.angle(y_phi_sum)
+                ref_loss = ref[:,N_phi_ave//2:-(N_phi_ave-N_phi_ave//2)] *torch.exp(1j*phi_ma) 
+                loss = self.loss_func( y_symb[:,N_phi_ave//2:-(N_phi_ave-N_phi_ave//2)].real, ref_loss.real ) + self.loss_func( y_symb[:,N_phi_ave//2:-(N_phi_ave-N_phi_ave//2)].imag, ref_loss.imag)
                 # for cc in range(self.num_channels):
                 #     ref[cc,:] *= torch.exp(1j*self.cpe(y_symb[cc,:])[1])    # rotate reference to make update independet of phase noise
-                loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
+                # loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
             else:
                 loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
 
