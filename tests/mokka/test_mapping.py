@@ -1,4 +1,6 @@
 from mokka import mapping
+import mokka.utils.bitops.torch
+import mokka.utils.bitops.numpy
 import torch
 import numpy as np
 
@@ -40,6 +42,15 @@ def test_qam_constellation_mapper():
     mapper = mapping.torch.QAMConstellationMapper(m)
     symbols = mapper.get_constellation().detach().numpy().flatten()
     reference_symbols = mapping.numpy.QAM(m).get_constellation().flatten()
+    assert np.allclose(symbols, reference_symbols)
+
+
+def test_custom_constellation_mapper():
+    m = 4
+    bits = mokka.utils.bitops.numpy.generate_all_input_bits(m)
+    symbols = mokka.utils.bitops.torch.bits2idx(torch.from_numpy(bits))
+    mapper = mapping.torch.CustomConstellationMapper(m, symbols)
+    reference_symbols = mapper.get_constellation().detach().numpy().flatten()
     assert np.allclose(symbols, reference_symbols)
 
 
