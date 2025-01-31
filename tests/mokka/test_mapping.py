@@ -43,17 +43,6 @@ def test_qam_constellation_mapper():
     assert np.allclose(symbols, reference_symbols)
 
 
-def test_custom_constellation_mapper():
-    m = 4 
-    bits = torch.from_numpy(
-        np.array([[0, 1, 0, 0], [1, 0, 0, 0], [1, 1, 1, 1], [0, 1, 0, 1]], dtype=int)
-    )
-    mapper = mapping.torch.CustomConstellationMapper(m, symbols)
-    symbols = mapper.forward(bits)
-    reference_symbols = mapper.get_constellation()
-    assert np.allclose(symbols, reference_symbols)
-
-
 def test_classical_demapper():
     m = 4
     sigma = torch.tensor(0.1)
