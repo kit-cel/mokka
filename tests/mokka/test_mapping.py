@@ -53,12 +53,13 @@ def test_custom_constellation_mapper():
     reference_symbols = mapper.get_constellation().detach().numpy().flatten()
     assert np.allclose(symbols, reference_symbols)
 
+
 def test_separated_constellation_mapper():
-    m = 4 
-    for i in range(0,3):
+    m = 4
+    for i in range(0, 3):
         if i == 0:
-            mapper= mapping.torch.SeparatedConstellationMapper(m, qam_init=True)
-            symbols=mapper.get_constellation().detach().numpy().flatten()
+            mapper = mapping.torch.SeparatedConstellationMapper(m, qam_init=True)
+            symbols = mapper.get_constellation().detach().numpy().flatten()
             reference_symbols = mapping.numpy.QAM(m).get_constellation().flatten()
             assert np.allclose(symbols, reference_symbols)
         elif i == 1:
@@ -66,9 +67,10 @@ def test_separated_constellation_mapper():
             symbols = mapper.get_constellation()
             assert symbols.shape[0] == 16
         elif i == 2:
-            mapper = mapping.torch.SeparatedConstellationMapper(m,m_imag=1)
+            mapper = mapping.torch.SeparatedConstellationMapper(m, m_imag=1)
             symbols = mapper.get_constellation()
             assert symbols.shape[0] == 16
+
 
 def test_constellation_demapper():
     m = 4
@@ -81,7 +83,7 @@ def test_constellation_demapper():
     llrs = demapper(symbols)
     rx_bits = (llrs.detach().numpy() < 0).astype(int)
     assert np.allclose(bits, rx_bits)
-    
+
 
 def test_classical_demapper():
     m = 4
@@ -114,6 +116,7 @@ def test_gaussian_demapper():
     print(rx_bits)
     assert np.allclose(bits, rx_bits)
 
+
 def test_separated_simple_demapper():
     m = 4
     bits = torch.from_numpy(
@@ -123,6 +126,5 @@ def test_separated_simple_demapper():
     symbols = mapper(bits).flatten()
     demapper = mapping.torch.SeparatedSimpleDemapper(m, demapper_width=128)
     llrs = demapper(symbols)
-    rx_bits = (llrs.detach().numpy() <0).astype(int)
+    rx_bits = (llrs.detach().numpy() < 0).astype(int)
     assert np.allclose(bits, rx_bits)
-    
