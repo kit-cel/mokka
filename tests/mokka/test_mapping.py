@@ -101,6 +101,24 @@ def test_classical_demapper():
     assert np.allclose(bits, rx_bits)
 
 
+def test_classical_demapper_symbolwise():
+    m = 4
+    sigma = torch.tensor(0.1)
+    bits = torch.from_numpy(
+        np.array([[0, 1, 0, 0], [1, 0, 0, 0], [1, 1, 1, 1], [0, 1, 0, 1]], dtype=int)
+    )
+    onehot = mokka.utils.bitops.torch.bits_to_onehot(bits)
+    mapper = mapping.torch.QAMConstellationMapper(m)
+    symbols = mapper(bits).flatten()
+    demapper = mapping.torch.ClassicalDemapper(
+        sigma, mapper.get_constellation().flatten(), bitwise=False
+    )
+    q_value = demapper(symbols)
+    print(q_value)
+    rx_onehot = (q_value.detach().numpy() >= 1.0000e-5).astype(float)
+    assert np.allclose(onehot, rx_onehot)
+
+
 def test_gaussian_demapper():
     m = 4
     bits = torch.from_numpy(
@@ -128,3 +146,5 @@ def test_separated_simple_demapper():
     llrs = demapper(symbols)
     rx_bits = (llrs.detach().numpy() < 0).astype(int)
     assert np.allclose(bits, rx_bits)
+
+
