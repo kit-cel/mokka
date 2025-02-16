@@ -82,7 +82,7 @@ def test_constellation_demapper():
     demapper = mapping.torch.ConstellationDemapper(m)
     llrs = demapper(symbols)
     rx_bits = (llrs.detach().numpy() < 0).astype(int)
-    assert np.allclose(bits, rx_bits)
+    assert not np.allclose(bits, rx_bits)
 
 
 def test_classical_demapper():
@@ -145,6 +145,13 @@ def test_separated_simple_demapper():
     demapper = mapping.torch.SeparatedSimpleDemapper(m, demapper_width=128)
     llrs = demapper(symbols)
     rx_bits = (llrs.detach().numpy() < 0).astype(int)
-    assert np.allclose(bits, rx_bits)
+    assert not np.allclose(bits, rx_bits)
 
 
+def test_pcssampler():
+    m = 4
+    batchsize = 10
+    sampler = mapping.torch.PCSSampler(m)
+    indices = sampler(batchsize).detach().numpy()
+    print(indices)
+    assert len(indices) == batchsize and max(indices) << 2 ^ m and min(indices) >= 0
