@@ -102,7 +102,7 @@ class r_phi_PSK:
 
         scaling = np.sqrt(6/((self.num_radii+1)*(2*self.num_radii+1)))
         self.symbol_radii = (np.arange(self.num_radii)+1)*scaling
-        self.symbol_phases = np.arange(self.num_angle)/self.num_angle*2*np.pi
+        self.symbol_phases = np.arange(self.num_phases)/self.num_phases*2*np.pi
 
     def get_constellation(self):
         """

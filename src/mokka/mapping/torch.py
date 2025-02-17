@@ -214,7 +214,7 @@ class ConstellationMapper(torch.nn.Module):
             # self.register_buffer("m", torch.tensor(m))
         else:
             self.m = m
-            self.register_buffer("m", torch.tensor(m))
+            # self.register_buffer("m", torch.tensor(m))
         self.register_buffer("mod_extra_params", torch.tensor(mod_extra_params or []))
         self.register_buffer("center_constellation", torch.tensor(center_constellation))
         self.register_buffer("normalize_constellation", torch.tensor(normalize_constellation))
@@ -1102,10 +1102,6 @@ class CartesianPASSampler(torch.nn.Module):
         logits_real = torch.unsqueeze(logits_1D, dim=0)
         logits_imag = torch.unsqueeze(logits_1D, dim=1)
         logits_2D = torch.reshape(logits_real*logits_imag, (-1,))
-        # print(self.idx_lookup[torch.arange(int(2**self.m))])
-        # print(self.idx_lookup[torch.arange(int(2**self.m))][0].dtype)
-        # print(logits_2D)
-        # print(self.idx_lookup[torch.arange(int(2**self.m))].to(torch.int16).squeeze())
         logits_sorted = logits_2D[self.idx_lookup[torch.arange(int(2**self.m))].to(torch.long).squeeze()]
         return self.softmax(logits_sorted).squeeze()
 
@@ -1114,21 +1110,21 @@ class PolarPASSampler(torch.nn.Module):
     """
     Sample symbol indices from a learnable discrete probability distribution.
 
+    :params num_bits_radial: bits (per symbol) in radial direction
+    :params num_bits_phase: bits (per symbol) in phase/angular direction
     :params m: bits per symbol
-    :params l_init: Initial values for the per-symbol logits
-    :param symmetries: number of times the probabilty vector is repeated to
-                       obtain a probability distribution with uniform distribution
-                       for certain bits in the bitstring.
+    :params l_init: Initial values for the logits
+        The first 2**num_bits_radial logits correspond to the radial direction
+        The last 2**num_bits_phase logits correspond to the phase/angular direction
     """
     def __init__(self, m, l_init=None, pcs_extra_params=None):
         """Construct PCSSampler."""
         super(PolarPASSampler, self).__init__()
-        self.r = m[0]
-        self.phi = m[1]
-        self.m = int(self.r+self.phi)
-        # self.m = torch.tensor(m, dtype=torch.float32)
+        self.num_bits_radial = m[0]
+        self.num_bits_phase = m[1]
+        self.m = int(self.num_bits_radial+self.num_bits_phase)
         self.symbols_per_bit = np.sqrt(2**self.m)
-        self.num_probabilites = int(2**self.r + 2**self.phi)
+        self.num_probabilites = int(2**self.num_bits_radial + 2**self.num_bits_phase)
 
         if l_init is None:
             self.logits = torch.nn.Parameter(
@@ -1143,11 +1139,11 @@ class PolarPASSampler(torch.nn.Module):
         self.relu = torch.nn.ReLU()
         self.softmax = torch.nn.Softmax(dim=0)
 
-        bits_r_phi_psk = torch.zeros((int(2**(self.r)), int(2**(self.phi)), self.m))
-        bits_gray_radius = gray(self.r)
-        bits_gray_angle = gray(self.phi)
-        for i in range(2**(self.r)):
-            for j in range(2**(self.phi)):
+        bits_r_phi_psk = torch.zeros((int(2**(self.num_bits_radial)), int(2**(self.num_bits_phase)), self.m))
+        bits_gray_radius = gray(self.num_bits_radial)
+        bits_gray_angle = gray(self.num_bits_phase)
+        for i in range(2**(self.num_bits_radial)):
+            for j in range(2**(self.num_bits_phase)):
                 bits_r_phi_psk[i,j,:] = torch.tensor(bits_gray_radius[i] + bits_gray_angle[j])
         bits_gray_2d = torch.reshape(bits_r_phi_psk,(2**self.m,self.m))
 
@@ -1184,15 +1180,9 @@ class PolarPASSampler(torch.nn.Module):
         """Return current probability distribution."""
         logits = self.logits
         logger.debug("logits: %s", logits)
-        logits_radian = torch.unsqueeze(torch.flip(logits[:int(2**self.r)], dims=(0,)), dim=1)
-        logits_angle = torch.unsqueeze(logits[-int(2**self.phi):], dim=0)
+        logits_radian = torch.unsqueeze(torch.flip(logits[:int(2**self.num_bits_radial)], dims=(0,)), dim=1)
+        logits_angle = torch.unsqueeze(logits[-int(2**self.num_bits_phase):], dim=0)
         logits_2D = torch.reshape(logits_radian*logits_angle, (-1,))
-        # print(self.idx_lookup[torch.arange(int(2**self.m))])
-        # print(self.idx_lookup[torch.arange(int(2**self.m))][0].dtype)
-        # print(logits_2D)
-        # print(self.idx_lookup[torch.arange(int(2**self.m))].to(torch.int16).squeeze())
-        # print(logits_2D)
-        # print(self.idx_lookup[torch.arange(int(2**self.m))].to(torch.long).squeeze())
         logits_sorted = logits_2D[self.idx_lookup[torch.arange(int(2**self.m))].to(torch.long).squeeze()]
         return self.softmax(logits_sorted).squeeze()
 
