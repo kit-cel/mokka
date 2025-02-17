@@ -2,6 +2,8 @@
 
 from .. import normalization, functional
 from .numpy import QAM
+from .numpy import r_phi_PSK
+from ..utils.bitops import gray
 from ..utils.bitops.torch import bits_to_onehot
 from ..utils.generators.numpy import generate_all_bits
 from ..functional.torch import distribution_quantization
@@ -205,17 +207,27 @@ class ConstellationMapper(torch.nn.Module):
         """Construct ConstellationMapper."""
         super(ConstellationMapper, self).__init__()
         self.ReLU = torch.nn.ReLU()
-        self.register_buffer("m", torch.tensor(m))
+        if qam_init == "PolarPAS":
+            self.r = m[0]
+            self.phi = m[1]
+            self.m = self.r+self.phi
+            # self.register_buffer("m", torch.tensor(m))
+        else:
+            self.m = m
+            self.register_buffer("m", torch.tensor(m))
         self.register_buffer("mod_extra_params", torch.tensor(mod_extra_params or []))
         self.register_buffer("center_constellation", torch.tensor(center_constellation))
         self.register_buffer("normalize_constellation", torch.tensor(normalize_constellation))
         # Mapper
-        self.map1 = torch.nn.Linear(max(len(mod_extra_params or []), 1), 2 ** (m + 1))
-        self.map2 = torch.nn.Linear(2 ** (m + 1), 2 ** (m + 1))
-        self.register_buffer("p_symbols", torch.full((2**m,), 1.0 / (2**m)))
+        self.map1 = torch.nn.Linear(max(len(mod_extra_params or []), 1), 2 ** (self.m + 1))
+        self.map2 = torch.nn.Linear(2 ** (self.m + 1), 2 ** (self.m + 1))
+        self.register_buffer("p_symbols", torch.full((2**self.m,), 1.0 / (2**self.m)))
         if qam_init:
             with torch.no_grad():
-                symbols = QAM(m).get_constellation().flatten()
+                if qam_init == "PolarPAS":
+                    symbols = r_phi_PSK(self.r, self.phi).get_constellation().flatten()
+                else:
+                    symbols = QAM(m).get_constellation().flatten()
                 self.map1.weight.zero_()
                 self.map1.bias.fill_(1)
                 self.map2.weight = torch.nn.Parameter(
@@ -304,7 +316,7 @@ class ConstellationMapper(torch.nn.Module):
         :returns: tensor of constellation points
         """
         # Test bits
-        mod_args = torch.tensor(args, dtype=torch.float32)
+        mod_args = torch.as_tensor(args, dtype=torch.float32, device=self.map1.weight.device)
         # print(mod_args)
         # mod_args = mod_args.repeat(2 ** self.m.item(), 1).split(1, dim=-1)
         B = generate_all_bits(self.m.item()).copy()
@@ -326,7 +338,7 @@ class ConstellationMapper(torch.nn.Module):
             # print(mod_args)
             c = self.ReLU(self.map1(mod_args))
             c = self.map2(c)
-            c = torch.view_as_complex(torch.reshape(c, (2 ** self.m.item(), 2)))
+            c = torch.view_as_complex(torch.reshape(c, (2 ** self.m, 2)))
             # To-Do: Need to fix this
             # Generate Constellation mapping c of size 2**m
             # c = self.ReLU(self.map1(snr_dB))
@@ -337,7 +349,7 @@ class ConstellationMapper(torch.nn.Module):
             mod_args = torch.zeros((1,), device=bits.device)
             c = self.ReLU(self.map1(mod_args))
             c = self.map2(c)
-            c = torch.view_as_complex(torch.reshape(c, (2 ** self.m.item(), 2)))
+            c = torch.view_as_complex(torch.reshape(c, (2 ** self.m, 2)))
         if self.center_constellation:
             c = normalization.center_constellation(c, self.p_symbols)
         if self.normalize_constellation:
@@ -700,7 +712,7 @@ class ClassicalDemapper(torch.nn.Module):
         :returns: log likelihood ratios
         """
         llrs = torch.zeros((dist.size()[0], self.m.item())).to(dist.device)
-        bias = 1e-8  # required to stop sum inside log from becoming zero
+        bias = 1e-16  # required to stop sum inside log from becoming zero
         for bit in np.arange(self.m.item()):
             one_llr = torch.log(
                 torch.sum(dist[:, self.m_one_idx[bit]] + bias, axis=1)
@@ -1016,6 +1028,175 @@ class SeparatedSimpleDemapper(torch.nn.Module):
         return model
 
 
+class CartesianPASSampler(torch.nn.Module):
+    """
+    Sample symbol indices from a learnable discrete probability distribution.
+
+    :params m: bits per symbol
+    :params l_init: Initial values for the per-symbol logits
+    :param symmetries: number of times the probabilty vector is repeated to
+                       obtain a probability distribution with uniform distribution
+                       for certain bits in the bitstring.
+    """
+    def __init__(self, m, l_init=None, pcs_extra_params=None):
+        """Construct PCSSampler."""
+        super(CartesianPASSampler, self).__init__()
+        self.m = torch.tensor(m, dtype=torch.float32)
+        self.symbols_per_bit = np.sqrt(2**self.m)
+        self.num_probabilites = int(self.symbols_per_bit/2)
+
+        if l_init is None:
+            self.logits = torch.nn.Parameter(
+                torch.nn.init.xavier_normal_(
+                    torch.zeros((self.num_probabilites, 1), dtype=torch.float32)
+                )
+            )
+        else:
+            if l_init.shape[0] != self.num_probabilites:
+                raise ValueError("l_init must be size of 2**m/2**symmetries")
+            self.logits = torch.nn.Parameter(l_init)
+        self.relu = torch.nn.ReLU()
+        self.softmax = torch.nn.Softmax(dim=0)
+
+        bits_qam = torch.zeros(2**(m//2), 2**(m//2), m)
+        bits_gray_1d = gray(m//2)
+        for i in range(2**(m//2)):
+            for j in range(2**(m//2)):
+                bits_qam[i,j,:] = torch.tensor(bits_gray_1d[i] + bits_gray_1d[j])
+        bits_gray_2d = torch.reshape(bits_qam,(2**m,m))
+
+        # Jetzt das passende Mapping finden
+        all_bits = generate_all_bits(m)
+
+        self.idx_lookup = torch.zeros((2**m, 1), dtype=torch.int16)
+        for i in range(2**m):
+            self.idx_lookup[i] = (bits_gray_2d == torch.tensor(all_bits[i].copy())).all(axis=1).nonzero().item()
+
+    def forward(self, batchsize, *args):
+        """
+        Generate symbol indices.
+
+        :params batchsize: Number of indices to generate
+        """
+        # num_symbols = torch.min(
+        #    (torch.round(self.p_symbols * batchsize)).type(torch.int32), 1
+        # ).values
+        idx = (
+            functional.torch.distribution_quant_gumbel_softmax(
+                self.p_symbols(*args), batchsize
+            )
+            .squeeze()
+            .long()
+        )
+        # idx = torch.repeat_interleave(
+        #     torch.arange(2 ** self.m.item(), device=num_symbols.device), num_symbols
+        # )
+        logger.debug("idx: %s", idx)
+        return idx.squeeze()
+
+    def p_symbols(self, *args):
+        """Return current probability distribution."""
+        logits = self.logits
+        logger.debug("logits: %s", logits)
+        logits_1D = torch.cat((logits, torch.flip(logits, dims=(0,))), dim=0)
+        logits_real = torch.unsqueeze(logits_1D, dim=0)
+        logits_imag = torch.unsqueeze(logits_1D, dim=1)
+        logits_2D = torch.reshape(logits_real*logits_imag, (-1,))
+        # print(self.idx_lookup[torch.arange(int(2**self.m))])
+        # print(self.idx_lookup[torch.arange(int(2**self.m))][0].dtype)
+        # print(logits_2D)
+        # print(self.idx_lookup[torch.arange(int(2**self.m))].to(torch.int16).squeeze())
+        logits_sorted = logits_2D[self.idx_lookup[torch.arange(int(2**self.m))].to(torch.long).squeeze()]
+        return self.softmax(logits_sorted).squeeze()
+
+
+class PolarPASSampler(torch.nn.Module):
+    """
+    Sample symbol indices from a learnable discrete probability distribution.
+
+    :params m: bits per symbol
+    :params l_init: Initial values for the per-symbol logits
+    :param symmetries: number of times the probabilty vector is repeated to
+                       obtain a probability distribution with uniform distribution
+                       for certain bits in the bitstring.
+    """
+    def __init__(self, m, l_init=None, pcs_extra_params=None):
+        """Construct PCSSampler."""
+        super(PolarPASSampler, self).__init__()
+        self.r = m[0]
+        self.phi = m[1]
+        self.m = int(self.r+self.phi)
+        # self.m = torch.tensor(m, dtype=torch.float32)
+        self.symbols_per_bit = np.sqrt(2**self.m)
+        self.num_probabilites = int(2**self.r + 2**self.phi)
+
+        if l_init is None:
+            self.logits = torch.nn.Parameter(
+                torch.nn.init.xavier_normal_(
+                    torch.zeros((self.num_probabilites, 1), dtype=torch.float32)
+                )
+            )
+        else:
+            if l_init.shape[0] != self.num_probabilites:
+                raise ValueError("l_init must be size of 2**m/2**symmetries")
+            self.logits = torch.nn.Parameter(l_init)
+        self.relu = torch.nn.ReLU()
+        self.softmax = torch.nn.Softmax(dim=0)
+
+        bits_r_phi_psk = torch.zeros((int(2**(self.r)), int(2**(self.phi)), self.m))
+        bits_gray_radius = gray(self.r)
+        bits_gray_angle = gray(self.phi)
+        for i in range(2**(self.r)):
+            for j in range(2**(self.phi)):
+                bits_r_phi_psk[i,j,:] = torch.tensor(bits_gray_radius[i] + bits_gray_angle[j])
+        bits_gray_2d = torch.reshape(bits_r_phi_psk,(2**self.m,self.m))
+
+        # Jetzt das passende Mapping finden
+        all_bits = generate_all_bits(self.m)
+
+        self.idx_lookup = torch.zeros((2**self.m, 1), dtype=torch.int16)
+        for i in range(2**self.m):
+            self.idx_lookup[i] = (bits_gray_2d == torch.tensor(all_bits[i].copy())).all(axis=1).nonzero().item()
+
+    def forward(self, batchsize, *args):
+        """
+        Generate symbol indices.
+
+        :params batchsize: Number of indices to generate
+        """
+        # num_symbols = torch.min(
+        #    (torch.round(self.p_symbols * batchsize)).type(torch.int32), 1
+        # ).values
+        idx = (
+            functional.torch.distribution_quant_gumbel_softmax(
+                self.p_symbols(*args), batchsize
+            )
+            .squeeze()
+            .long()
+        )
+        # idx = torch.repeat_interleave(
+        #     torch.arange(2 ** self.m.item(), device=num_symbols.device), num_symbols
+        # )
+        logger.debug("idx: %s", idx)
+        return idx.squeeze()
+
+    def p_symbols(self, *args):
+        """Return current probability distribution."""
+        logits = self.logits
+        logger.debug("logits: %s", logits)
+        logits_radian = torch.unsqueeze(torch.flip(logits[:int(2**self.r)], dims=(0,)), dim=1)
+        logits_angle = torch.unsqueeze(logits[-int(2**self.phi):], dim=0)
+        logits_2D = torch.reshape(logits_radian*logits_angle, (-1,))
+        # print(self.idx_lookup[torch.arange(int(2**self.m))])
+        # print(self.idx_lookup[torch.arange(int(2**self.m))][0].dtype)
+        # print(logits_2D)
+        # print(self.idx_lookup[torch.arange(int(2**self.m))].to(torch.int16).squeeze())
+        # print(logits_2D)
+        # print(self.idx_lookup[torch.arange(int(2**self.m))].to(torch.long).squeeze())
+        logits_sorted = logits_2D[self.idx_lookup[torch.arange(int(2**self.m))].to(torch.long).squeeze()]
+        return self.softmax(logits_sorted).squeeze()
+
+
 class PCSSampler(torch.nn.Module):
     """
     Sample symbol indices from a learnable discrete probability distribution.
@@ -1026,7 +1207,6 @@ class PCSSampler(torch.nn.Module):
                        obtain a probability distribution with uniform distribution
                        for certain bits in the bitstring.
     """
-
     def __init__(self, m, l_init=None, symmetries=0, pcs_extra_params=None):
         """Construct PCSSampler."""
         super(PCSSampler, self).__init__()
