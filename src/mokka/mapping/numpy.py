@@ -70,3 +70,67 @@ class QAM:
             ]
             output.append(real + 1j * imag)
         return np.array(output)
+    
+
+class r_phi_PSK:
+    """
+    Arbitrarily sized r_phi_PSK constelllations.
+
+    :param num_bits_radial: Number of bits encoded in radial direction
+    :param num_bits_phase: Number of bits in phase/angular direction
+    """
+
+    def __init__(self, num_bits_radial, num_bits_phase):
+        """Construct r_phi_PSK class."""
+        if num_bits_radial % 1:
+            raise ValueError(
+                "Number of bits must be integer"
+            )
+        if phi % 1:
+            raise ValueError(
+                "Number of bits must be integer"
+            )
+        self.num_bits_radial = num_bits_radial
+        self.num_radii = int(2**num_bits_radial)    
+        self.num_bits_phase = num_bits_phase
+        self.num_phases = int(2**num_bits_phase)
+        
+        self.bit_sequence_radius = np.array(gray(num_bits_radial))
+        self.bit_sequence_angle = np.array(gray(num_bits_phase))
+
+        self.m = num_bits_radial + num_bits_phase
+
+        scaling = np.sqrt(6/((self.num_radii+1)*(2*self.num_radii+1)))
+        self.symbol_radii = (np.arange(self.num_radii)+1)*scaling
+        self.symbol_phases = np.arange(self.num_angle)/self.num_angle*2*np.pi
+
+    def get_constellation(self):
+        """
+        Return all constellation symbols.
+
+        The index represents the integer representation of
+        the encoded bit-string (LSB first).
+
+        :returns: all constellation symbols
+        """
+        bits = generate_all_bits(self.m)
+        symbols = self.map(bits)
+        return symbols
+
+    def map(self, bits):
+        """
+        Perform mapping of bitstrings.
+
+        :returns: complex symbol per bitstring of length `self.m`
+        """
+        output = []
+        for seq in bits.reshape(-1, self.m):
+            # Take first r bits for amplitude and last phi bits for phase
+            amplitude = self.symbol_radii[
+                (self.bit_sequence_radius == seq[: self.r]).all(axis=1).nonzero()
+            ]
+            phase = self.symbol_phases[
+                (self.bit_sequence_angle == seq[-self.phi :]).all(axis=1).nonzero()
+            ]
+            output.append(amplitude*np.exp(1j*phase))
+        return np.array(output)
