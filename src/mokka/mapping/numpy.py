@@ -86,7 +86,7 @@ class r_phi_PSK:
             raise ValueError(
                 "Number of bits must be integer"
             )
-        if phi % 1:
+        if num_bits_phase % 1:
             raise ValueError(
                 "Number of bits must be integer"
             )
@@ -125,12 +125,12 @@ class r_phi_PSK:
         """
         output = []
         for seq in bits.reshape(-1, self.m):
-            # Take first r bits for amplitude and last phi bits for phase
+            # Take first num_bits_radial bits for amplitude and last num_bits_phase bits for phase
             amplitude = self.symbol_radii[
-                (self.bit_sequence_radius == seq[: self.r]).all(axis=1).nonzero()
+                (self.bit_sequence_radius == seq[: self.num_bits_radial]).all(axis=1).nonzero() if self.num_bits_radial>0 else 0
             ]
             phase = self.symbol_phases[
-                (self.bit_sequence_angle == seq[-self.phi :]).all(axis=1).nonzero()
+                (self.bit_sequence_angle == seq[-self.num_bits_phase :]).all(axis=1).nonzero() if self.num_bits_phase>0 else 0
             ]
             output.append(amplitude*np.exp(1j*phase))
         return np.array(output)

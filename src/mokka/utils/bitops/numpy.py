@@ -52,6 +52,8 @@ def gray(m):
     :returns: Tuple of :math:`2^m` Gray-encoded bitstrings
 
     """
+    if m == 0:
+        return ()
     if m == 1:
         return ((0,), (1,))
     prev = gray(m - 1)
