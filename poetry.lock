@@ -1749,6 +1749,20 @@ files = [
 pytest-cover = "*"
 
 [[package]]
+name = "pytest-datafiles"
+version = "3.0.0"
+description = "py.test plugin to create a 'tmp_path' containing predefined files/directories."
+optional = false
+python-versions = "*"
+files = [
+    {file = "pytest-datafiles-3.0.0.tar.gz", hash = "sha256:a70c4c66a36d1cdcfc095607f04eee66eaef3fa64cbb62d60c47ce169901d1d4"},
+    {file = "pytest_datafiles-3.0.0-py2.py3-none-any.whl", hash = "sha256:2176e10d3f6e76f358925a897e21e2bcc5a0170b92fac4e66ed055eaa2ca6a22"},
+]
+
+[package.dependencies]
+pytest = ">=3.6"
+
+[[package]]
 name = "python-dateutil"
 version = "2.9.0.post0"
 description = "Extensions to the standard Python datetime module"
@@ -2616,4 +2630,4 @@ tf = []
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "5975c0494e592754374d653c67905e21988a81227060e743a4193b05b777762e"
+content-hash = "3c2f71fb73ecb553d6a56b0435cc0386e01cc9115bcf4b303edc0ec6cab76795"
