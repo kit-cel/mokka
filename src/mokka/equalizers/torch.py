@@ -114,7 +114,7 @@ class Butterfly2x2(torch.nn.Module):
         # We store h_xx, h_xy, h_yy, h_yx
         if trainable:
             self.register_parameter("taps", torch.nn.Parameter(filter_taps))
-        elif trainable:
+        elif not trainable:
             self.register_buffer("taps", filter_taps)
         else:
             raise ValueError("trainable must be set to either True or False.")
