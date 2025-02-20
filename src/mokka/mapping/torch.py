@@ -1,8 +1,7 @@
 """PyTorch implementation of Mappers and Demappers."""
 
 from .. import normalization, functional
-from .numpy import QAM
-from .numpy import r_phi_PSK
+from .numpy import QAM, PSK, r_phi_PSK
 from ..utils.bitops import gray
 from ..utils.bitops.torch import bits_to_onehot
 from ..utils.generators.numpy import generate_all_bits
@@ -193,7 +192,7 @@ class ConstellationMapper(torch.nn.Module):
     :param mod_extra_params: index of extra parameters to feed the NN
     :param center_constellation: Removes the mean from the constellation, i.e., ensures that E{X} = 0
     :param normalize_constellation: Normalizes the constellation to unit power, i.e., E{|X|^2} = 1
-    :param qam_init: Initialize the weights to form a Gray mapped QAM constellation
+    :param initialization: Initialize the weights to form a Gray mapped PSK ("PSK"), Gray Mapped Multi-Ring PSK ("PolarPAS") or Gray mapped QAM constellation ("True"/"QAM")
     """
 
     def __init__(
@@ -202,12 +201,12 @@ class ConstellationMapper(torch.nn.Module):
         mod_extra_params=None,
         center_constellation=True,
         normalize_constellation=True,
-        qam_init=False,
+        initialization=False,
     ):
         """Construct ConstellationMapper."""
         super(ConstellationMapper, self).__init__()
         self.ReLU = torch.nn.ReLU()
-        if qam_init == "PolarPAS":
+        if initialization == "r_phi_PSK":
             self.r = m[0]
             self.phi = m[1]
             self.m = self.r+self.phi
@@ -222,12 +221,17 @@ class ConstellationMapper(torch.nn.Module):
         self.map1 = torch.nn.Linear(max(len(mod_extra_params or []), 1), 2 ** (self.m + 1))
         self.map2 = torch.nn.Linear(2 ** (self.m + 1), 2 ** (self.m + 1))
         self.register_buffer("p_symbols", torch.full((2**self.m,), 1.0 / (2**self.m)))
-        if qam_init:
+        if initialization:
             with torch.no_grad():
-                if qam_init == "PolarPAS":
+                if initialization == "r_phi_PSK":
                     symbols = r_phi_PSK(self.r, self.phi).get_constellation().flatten()
-                else:
+                elif initialization == "PSK":
+                    symbols = PSK(m).get_constellation().flatten()
+                elif (initialization == "QAM") or (initialization == True):
                     symbols = QAM(m).get_constellation().flatten()
+                else:
+                    ValueError('Please provide a valid initialization: Possible initalizations as Gray mapped PSK ("PSK"), \
+                               Gray Mapped Multi-Ring PSK ("r_phi_PSK") or Gray mapped QAM constellation ("True"/"QAM")')
                 self.map1.weight.zero_()
                 self.map1.bias.fill_(1)
                 self.map2.weight = torch.nn.Parameter(

@@ -72,6 +72,54 @@ class QAM:
         return np.array(output)
     
 
+class PSK:
+    """
+    Arbitrarily sized PSK constellation with gray mapping.
+
+    :param m: Information per symbol [bit/symbol]
+    """
+
+    def __init__(self, m):
+        """Construct PSK class."""
+        if m % 2:
+            raise ValueError(
+                "Only bits/per Symbol which are multiple of 2 are supported"
+            )
+        self.m = m
+        self.bit_sequence = np.array(gray(m))
+
+        self.one_idx = np.nonzero(self.bit_sequence)
+        self.zero_idx = np.nonzero(np.abs(self.bit_sequence - 1))
+
+        phase_step_size = 2*np.pi/(2**m)
+        self.symbol_phases = np.arange(2**m)*phase_step_size
+        self.symbols = np.exp(1j*self.symbol_phases)
+
+    def get_constellation(self):
+        """
+        Return all constellation symbols.
+
+        The index represents the integer representation of
+        the encoded bit-string (LSB first).
+
+        :returns: all constellation symbols
+        """
+        bits = generate_all_bits(self.m)
+        symbols = self.map(bits)
+        return symbols
+
+    def map(self, bits):
+        """
+        Perform mapping of bitstrings.
+
+        :returns: complex symbol per bitstring of length `self.m`
+        """
+        output = []
+        for seq in bits.reshape(-1, self.m):
+            output.append(self.symbols[(self.bit_sequence == seq).all(axis=1).nonzero()])
+        return np.array(output)        
+
+
 class r_phi_PSK:
     """
     Arbitrarily sized r_phi_PSK constelllations.
