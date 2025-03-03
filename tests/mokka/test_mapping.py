@@ -87,9 +87,9 @@ def test_constellation_demapper(datafiles):
         np.array([[0, 1, 0, 0], [1, 0, 0, 0], [1, 1, 1, 1], [0, 1, 0, 1]], dtype=int)
     )
     for df in datafiles.iterdir():
-        if "demapper" in df.name:
+        if "16QAM_demapper" in df.name:
             demapper_dict = torch.load(df, map_location=torch.device("cpu"))
-        elif "mapper" in df.name:
+        elif "16QAM_mapper" in df.name:
             mapper_dict = torch.load(df, map_location=torch.device("cpu"))
         else:
             raise ValueError("Neither mapper nor demapper in filename")
@@ -151,14 +151,26 @@ def test_gaussian_demapper():
     assert np.allclose(bits, rx_bits)
 
 
-def test_separated_simple_demapper():
+@pytest.mark.datafiles(
+    FIXTURE_DIR / "separated_demapper.bin", FIXTURE_DIR / "separated_mapper.bin"
+)
+def test_separated_simple_demapper(datafiles):
     m = 4
     bits = torch.from_numpy(
         np.array([[0, 1, 0, 0], [1, 0, 0, 0], [1, 1, 1, 1], [0, 1, 0, 1]], dtype=int)
     )
-    mapper = mapping.torch.QAMConstellationMapper(m)
+    for df in datafiles.iterdir():
+        if "separated_demapper" in df.name:
+            demapper_dict = torch.load(df, map_location=torch.device("cpu"))
+        elif "separated_mapper" in df.name:
+            mapper_dict = torch.load(df, map_location=torch.device("cpu"))
+        else:
+            raise ValueError("Neither mapper nor demapper in filename")
+    mapper = mapping.torch.SeparatedConstellationMapper(m).load_model(mapper_dict)
     symbols = mapper(bits).flatten()
-    demapper = mapping.torch.SeparatedSimpleDemapper(m, demapper_width=128)
+    demapper = mapping.torch.SeparatedSimpleDemapper(m, demapper_width=128).load_model(
+        demapper_dict
+    )
     llrs = demapper(symbols)
     rx_bits = (llrs.detach().numpy() < 0).astype(int)
     assert not np.allclose(bits, rx_bits)
