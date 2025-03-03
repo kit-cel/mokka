@@ -78,26 +78,14 @@ def test_separated_constellation_mapper():
             assert symbols.shape[0] == 16
 
 
-<<<<<<< HEAD
-def test_constellation_demapper():
-=======
 @pytest.mark.datafiles(
     FIXTURE_DIR / "AWGN_16QAM_mapper.bin", FIXTURE_DIR / "AWGN_16QAM_demapper.bin"
 )
 def test_constellation_demapper(datafiles):
->>>>>>> main
     m = 4
     bits = torch.from_numpy(
         np.array([[0, 1, 0, 0], [1, 0, 0, 0], [1, 1, 1, 1], [0, 1, 0, 1]], dtype=int)
     )
-<<<<<<< HEAD
-    mapper = mapping.torch.QAMConstellationMapper(m)
-    symbols = mapper(bits).flatten()
-    demapper = mapping.torch.ConstellationDemapper(m)
-    llrs = demapper(symbols)
-    rx_bits = (llrs.detach().numpy() < 0).astype(int)
-    assert not np.allclose(bits, rx_bits)
-=======
     for df in datafiles.iterdir():
         if "demapper" in df.name:
             demapper_dict = torch.load(df, map_location=torch.device("cpu"))
@@ -111,7 +99,6 @@ def test_constellation_demapper(datafiles):
     llrs = demapper(symbols)
     rx_bits = (llrs.detach().numpy() < 0).astype(int)
     assert np.allclose(bits, rx_bits)
->>>>>>> main
 
 
 def test_classical_demapper():
