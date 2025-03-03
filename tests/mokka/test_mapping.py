@@ -3,6 +3,12 @@ import mokka.utils.bitops.torch
 import mokka.utils.bitops.numpy
 import torch
 import numpy as np
+import pytest
+
+from pathlib import Path
+
+FIXTURE_DIR = Path(__file__).parent.resolve() / "data"
+
 
 # PyTorch tests
 
@@ -72,17 +78,40 @@ def test_separated_constellation_mapper():
             assert symbols.shape[0] == 16
 
 
+<<<<<<< HEAD
 def test_constellation_demapper():
+=======
+@pytest.mark.datafiles(
+    FIXTURE_DIR / "AWGN_16QAM_mapper.bin", FIXTURE_DIR / "AWGN_16QAM_demapper.bin"
+)
+def test_constellation_demapper(datafiles):
+>>>>>>> main
     m = 4
     bits = torch.from_numpy(
         np.array([[0, 1, 0, 0], [1, 0, 0, 0], [1, 1, 1, 1], [0, 1, 0, 1]], dtype=int)
     )
+<<<<<<< HEAD
     mapper = mapping.torch.QAMConstellationMapper(m)
     symbols = mapper(bits).flatten()
     demapper = mapping.torch.ConstellationDemapper(m)
     llrs = demapper(symbols)
     rx_bits = (llrs.detach().numpy() < 0).astype(int)
     assert not np.allclose(bits, rx_bits)
+=======
+    for df in datafiles.iterdir():
+        if "demapper" in df.name:
+            demapper_dict = torch.load(df, map_location=torch.device("cpu"))
+        elif "mapper" in df.name:
+            mapper_dict = torch.load(df, map_location=torch.device("cpu"))
+        else:
+            raise ValueError("Neither mapper nor demapper in filename")
+    mapper = mapping.torch.ConstellationMapper(m).load_model(mapper_dict)
+    symbols = mapper(bits).flatten()
+    demapper = mapping.torch.ConstellationDemapper(m).load_model(demapper_dict)
+    llrs = demapper(symbols)
+    rx_bits = (llrs.detach().numpy() < 0).astype(int)
+    assert np.allclose(bits, rx_bits)
+>>>>>>> main
 
 
 def test_classical_demapper():
