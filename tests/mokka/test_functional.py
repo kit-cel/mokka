@@ -101,6 +101,34 @@ def test_convolve_overlap_save_full_pytorch_complex_long():
     assert np.allclose(reference, result)
 
 
+def test_convolve_overlap_save_same_pytorch_complex_long():
+    a = np.random.standard_normal(1000) + 1j * np.random.standard_normal(1000)
+    b = np.random.standard_normal(10) - 1j * np.random.standard_normal(10)
+    reference = np.convolve(a, b, "same")
+    result = (
+        mokka.functional.torch.convolve_overlap_save(
+            torch.tensor(a), torch.tensor(b), "same"
+        )
+        .detach()
+        .numpy()
+    )
+    assert np.allclose(reference, result)
+
+
+def test_convolve_overlap_save_valid_pytorch_complex_long():
+    a = np.random.standard_normal(1000) + 1j * np.random.standard_normal(1000)
+    b = np.random.standard_normal(10) - 1j * np.random.standard_normal(10)
+    reference = np.convolve(a, b, "valid")
+    result = (
+        mokka.functional.torch.convolve_overlap_save(
+            torch.tensor(a), torch.tensor(b), "valid"
+        )
+        .detach()
+        .numpy()
+    )
+    assert np.allclose(reference, result)
+
+
 def test_unwrap():
     angle_diff = np.random.random(10000) * 2 * np.pi
     angles = np.cumsum(angle_diff)
