@@ -15,12 +15,60 @@ def test_convolve_pytorch_real():
     assert np.allclose(reference, result)
 
 
+def test_convolve_pytorch_real_same():
+    a = np.arange(10)
+    b = np.arange(3)
+    reference = np.convolve(a, b, "same")
+    result = (
+        mokka.functional.torch.convolve(torch.tensor(a), torch.tensor(b), "same")
+        .detach()
+        .numpy()
+    )
+    assert np.allclose(reference, result)
+
+
+def test_convolve_pytorch_real_valid():
+    a = np.arange(10)
+    b = np.arange(3)
+    reference = np.convolve(a, b, "valid")
+    result = (
+        mokka.functional.torch.convolve(torch.tensor(a), torch.tensor(b), "valid")
+        .detach()
+        .numpy()
+    )
+    assert np.allclose(reference, result)
+
+
 def test_convolve_pytorch_complex():
     a = np.arange(10) + 1j * np.arange(10)
     b = np.arange(3) - 1j * np.arange(3)
     reference = np.convolve(a, b)
     result = (
         mokka.functional.torch.convolve(torch.tensor(a), torch.tensor(b))
+        .detach()
+        .numpy()
+    )
+    assert np.allclose(reference, result)
+
+
+def test_convolve_pytorch_complex_same():
+    a = np.arange(10) + 1j * np.arange(10)
+    b = np.arange(3) - 1j * np.arange(3)
+    reference = np.convolve(a, b, "same")
+    result = (
+        mokka.functional.torch.convolve(torch.tensor(a), torch.tensor(b), "same")
+        .detach()
+        .numpy()
+    )
+    assert np.allclose(reference, result)
+
+
+def test_convolve_pytorch_complex_valid():
+    a = np.arange(10) + 1j * np.arange(10)
+    b = np.arange(3) - 1j * np.arange(3)
+    reference = np.convolve(a, b, "valid")
+    result = (
+        mokka.functional.torch.convolve(torch.tensor(a), torch.tensor(b), "valid")
         .detach()
         .numpy()
     )
