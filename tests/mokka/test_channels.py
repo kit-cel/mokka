@@ -124,3 +124,40 @@ def test_SSFM_dualpol():
     y1, y2 = channel(x1, x2)
     assert len(y1) == num_samples
     assert len(y2) == num_samples
+
+
+def test_SSFM_dualpol_circular():
+    amp = channels.EDFAAmpDualPol(
+        span_length,
+        amp_gain,
+        alphaa_db,
+        alphaa_db,
+        amp_noise,
+        noise_figure,
+        optical_carrier_frequency,
+        bw,
+        P_input_lin,
+        padding,
+    )
+    channel = channels.SSFMPropagationDualPol(
+        dt,
+        dz,
+        alphaa_db,
+        alphaa_db,
+        betapa,
+        betapb,
+        gamma,
+        length_span,
+        num_span,
+        solution_method="circular",
+    )
+    x1 = torch.zeros(num_samples, dtype=torch.complex64)
+    x2 = torch.zeros(num_samples, dtype=torch.complex64)
+    y1, y2 = channel(x1, x2)
+    assert len(y1) == num_samples
+    assert len(y2) == num_samples
+    if len(y1) == num_samples:
+        print("yay")
+
+
+test_SSFM_dualpol_circular()

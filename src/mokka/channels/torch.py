@@ -770,7 +770,7 @@ class SSFMPropagationDualPol(torch.nn.Module):
     alphaa_pdl_lin: Float[Tensor, "1"] = torch.tensor(0.0)
     alphab_pdl_lin: Float[Tensor, "1"] = torch.tensor(0.0)
     psp: Float[Tensor, "2"] = torch.tensor([0, 0])
-    solution_method = "elliptical"
+    solution_method: str = "elliptical"
     alphaa_lin: Float[Tensor, "1"] = attr.field(init=False)
     alphab_lin: Float[Tensor, "1"] = attr.field(init=False)
     amp: RamanAmpDualPol | EDFAAmpDualPol | None = None
@@ -821,7 +821,7 @@ class SSFMPropagationDualPol(torch.nn.Module):
             )
 
         elif self.solution_method == "circular":
-            sqrt2 = torch.sqrt(2)
+            sqrt2 = torch.sqrt(torch.tensor(2))
             self.TM11 = 1 / sqrt2
             self.TM12 = -1j / sqrt2
             self.TM21 = self.TM12
@@ -896,9 +896,11 @@ class SSFMPropagationDualPol(torch.nn.Module):
             h21_dz_2 = 0
 
         elif self.solution_method == "circular":
-            self.solution_method = "elliptical"
-            ha_dz, ha_dz_2, _, _, _, _, hb_dz, hb_dz_2 = self.get_operators(dz)
-            self.solution_method = "circular"
+
+            ha_dz = torch.exp(self.ha_basis * dz)
+            ha_dz_2 = torch.exp(self.ha_basis * dz / 2)
+            hb_dz = torch.exp(self.hb_basis * dz)
+            hb_dz_2 = torch.exp(self.hb_basis * dz / 2)
 
             sp = 0.5 * (1 + torch.sin(2 * self.Chi))
             sn = 0.5 * (1 - torch.sin(2 * self.Chi))
