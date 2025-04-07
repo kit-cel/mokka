@@ -173,7 +173,7 @@ def test_separated_simple_demapper(datafiles):
     )
     llrs = demapper(symbols)
     rx_bits = (llrs.detach().numpy() < 0).astype(int)
-    assert not np.allclose(bits, rx_bits)
+    assert np.allclose(bits, rx_bits)
 
 
 def test_pcssampler():

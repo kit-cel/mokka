@@ -156,8 +156,3 @@ def test_SSFM_dualpol_circular():
     y1, y2 = channel(x1, x2)
     assert len(y1) == num_samples
     assert len(y2) == num_samples
-    if len(y1) == num_samples:
-        print("yay")
-
-
-test_SSFM_dualpol_circular()
