@@ -871,10 +871,15 @@ class SSFMPropagationDualPol(torch.nn.Module):
         ]
         if self.pdl_simulation:
             assert self.solver_method == "fixedstep"
+        # We choose PDL elements following a random uniform distribution in
+        # [pdl_min, pdl_max] and divide by self.dz to counter-act the multiplication of
+        # self.dz later in the code since we want to model discrete PDL elements
+        # which should be independent of the chosen step-size
         num_pdl_elements = num_pmd_elements
         self.pdl_elements = [
             torch.zeros(num_pdl_elements, dtype=torch.float32).uniform_()
             * (self.pdl_max - self.pdl_min)
+            / self.dz
             + self.pdl_min
             for _ in range(self.num_span)
         ]
