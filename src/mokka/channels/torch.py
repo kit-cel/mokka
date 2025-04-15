@@ -1892,16 +1892,16 @@ class PMDPDLChannel(torch.nn.Module):
         """
         Initialize :py:class:`PMDPDLChannel`.
 
-        :param L:
-        :param num_steps:
-        :param pmd_parameter:
-        :param pmd_correlation_length:
-        :param f_samp:
-        :param pmd_sigma:
-        :param num_pdl_elements:
-        :param pdl_max:
-        :param pdl_min:
-        :param method:
+        :param L: fiber length
+        :param num_steps: number of steps per span
+        :param pmd_parameter: PMD Parameter \gamma
+        :param pmd_correlation_length: Length after which the SOP states are decorrelated
+        :param f_samp: sampling frequencey
+        :param pmd_sigma: pmd_parameter
+        :param num_pdl_elements: number of equally spaced pdl elements
+        :param pdl_max: maximum PDL
+        :param pdl_min: minimum PDL
+        :param method: simulation method (time or frequency)
         """
         super(PMDPDLChannel, self).__init__()
         self.dz = torch.as_tensor(L / num_steps)
@@ -1949,6 +1949,7 @@ class PMDPDLChannel(torch.nn.Module):
         self.pmd_correlation_length = pmd_correlation_length
         pdl_elements = (
             torch.zeros(num_pdl_elements, dtype=torch.float32).uniform_()
+            / self.dz
             * (pdl_max - pdl_min)
             + pdl_min
         )
