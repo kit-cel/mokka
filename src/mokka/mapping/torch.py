@@ -449,11 +449,11 @@ class SeparatedConstellationMapper(torch.nn.Module):
         :param model_dict: dictionary loaded with `torch.load()`
         """
         mapper_dict = {
-            k[len("mapper.") :]: v
+            (k[len("mapper.") :] if k.startswith("mapper") else k): v
             # k.removeprefix("mapper."): v #
             # Reenable if terminal computers are Python 3.9+
             for k, v in model_dict.items()
-            if k.startswith("mapper")
+            if not (k.startswith("demapper") or k.startswith("channel"))
         }
         m = mapper_dict["m"].item()
         m_real = mapper_dict["m_real"].item()
