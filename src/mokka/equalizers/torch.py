@@ -212,8 +212,11 @@ class ButterflyNxN(torch.nn.Module):
             )
             for diag_filter in range(num_channels):
                 filter_taps[
-                    diag_filter,diag_filter, num_taps // 2
-                ] = 1.0+1j*0  # filter h_ij with i=j (diagonal of MIMO matrix) are initialized with Dirac
+                    diag_filter,diag_filter, (num_taps-1) // 2
+                ] = 0.5+1j*0
+                filter_taps[
+                    diag_filter,diag_filter, (num_taps-1) // 2 +1
+                ] = 0.5+1j*0 #1.0+1j*0  # filter h_ij with i=j (diagonal of MIMO matrix) are initialized with Dirac
             self.num_taps = num_taps
         else:
             assert (taps.dim() == 2 and taps.size()[0] == num_channels**2) or (
@@ -245,8 +248,8 @@ class ButterflyNxN(torch.nn.Module):
         :params y: Signal to convolve
         :returns: convolved signal
         """
-        assert y.dim() == 2
-        assert y.size()[0] == self.num_channels
+        assert y.dim() == 2 or y.dim() == 3
+        assert y.size()[-2] == self.num_channels
         assert y.dtype == torch.complex64
 
         return torch.squeeze(

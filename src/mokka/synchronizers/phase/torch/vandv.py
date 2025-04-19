@@ -102,7 +102,7 @@ class ViterbiViterbi(torch.nn.Module):
         :returns: synchronized symbols sequence
         """
         x = torch.squeeze(x)
-        x = x * torch.exp(torch.tensor(1j) * torch.pi / self.symmetry.item())
+        x = x * torch.exp(torch.tensor(1j) * torch.pi / self.symmetry.item())   # to avoid the "pi-offset" of the projected symbols
         y_cpe_2, time_axis_2 = self.calc_partition(x)
         y_sym = torch.pow(y_cpe_2, self.symmetry.item())
         time_axis_2 = torch.nonzero(torch.abs(y_sym) > 1e-5)
@@ -123,13 +123,13 @@ class ViterbiViterbi(torch.nn.Module):
                 torch.zeros(self.window_length.item() // 2, device=x.device),
             )
         )
+        #### implement moving average filter (rectangular)
         y_sym_sum = torch.cumsum(y_sym_pad, 0)
-
         angle = torch.angle(
             y_sym_sum[self.window_length.item() :]
             - y_sym_sum[: -self.window_length.item()]
         )
-
+        ####
         phase_est = (1.0 / self.symmetry.item()) * unwrap(angle)
 
         if self.partition.item():
@@ -158,4 +158,4 @@ class ViterbiViterbi(torch.nn.Module):
             * torch.exp(-1j * phase_est)
             * torch.exp(torch.tensor(-1j) * torch.pi / self.symmetry.item())
         )
-        return rx_corrected
+        return rx_corrected, (- phase_est ) #+ (- torch.pi / self.symmetry.item()) )
