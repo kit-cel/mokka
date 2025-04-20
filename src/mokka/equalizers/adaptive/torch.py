@@ -2119,12 +2119,16 @@ class VAE_LE_NxN(torch.nn.Module):
                     avg_filter_type="tri",  #"rect",
                     trainable=False,
                 )
+        if use_cpe_in_training == True:
+            if cpe_window_length is None or angles_per_quadrant is None:
+                raise ValueError("Please provide cpe_window_length and angles_per_quadrant when using CPE.")
+            else:
                 self.cpe_in_loop = BPS(
                     self.angles_per_quadrant,
                     demapper.constellation.squeeze(),
                     self.cpe_window_length,
                     diff=True,
-                    temperature_per_epoch=1e-3,
+                    temperature_per_epoch=1e-2,
                     no_sectors=4,
                     avg_filter_type="tri",  #"rect",
                     trainable=False,
@@ -2135,6 +2139,18 @@ class VAE_LE_NxN(torch.nn.Module):
                 # self.cpe_in_loop = vandv.ViterbiViterbi(
                 #     window_length=cpe_window_length
                 # )
+
+    def init_cpe_for_train(self):
+        self.cpe_in_loop = BPS(
+                    self.angles_per_quadrant,
+                    self.demapper.constellation.squeeze(),
+                    self.cpe_window_length,
+                    diff=True,
+                    temperature_per_epoch=1e-2,
+                    no_sectors=4,
+                    avg_filter_type="tri",  #"rect",
+                    trainable=False,
+                )
 
     def reset(self):
         self.lr = self.start_lr.clone()
@@ -2392,6 +2408,7 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         IQ_separate=False,
         var_from_estimate=False,
         use_cpe=False,
+        use_cpe_in_training=False,
         cpe_window_length = None,
         angles_per_quadrant=None,
         device="cpu",
@@ -2413,6 +2430,7 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.register_buffer("var_from_estimate", torch.as_tensor(var_from_estimate))
         self.register_buffer("use_cpe", torch.as_tensor(use_cpe))
+        self.register_buffer("use_cpe_in_training", torch.as_tensor(use_cpe_in_training))
         if cpe_window_length != None:
             self.register_buffer("cpe_window_length", torch.as_tensor(cpe_window_length))
         if angles_per_quadrant != None:
@@ -2512,12 +2530,16 @@ class VAE_LE_flex_NxN(torch.nn.Module):
                     avg_filter_type="tri", #"rect",
                     trainable=False,
                 )
+        if use_cpe_in_training == True:
+            if cpe_window_length is None or angles_per_quadrant is None:
+                raise ValueError("Please provide cpe_window_length and angles_per_quadrant when using CPE.")
+            else:
                 self.cpe_in_loop = BPS(
                     self.angles_per_quadrant,
                     demapper.constellation,
                     self.cpe_window_length,
                     diff=True,
-                    temperature_per_epoch=1e-3,
+                    temperature_per_epoch=1e-2,
                     no_sectors=4,
                     avg_filter_type="tri", #"rect",
                     trainable=False,
@@ -2526,6 +2548,18 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         #                 window_length=cpe_window_length
         #             )
 
+    def init_cpe_for_train(self):
+        self.cpe_in_loop = BPS(
+                    self.angles_per_quadrant,
+                    self.demapper.constellation.squeeze(),
+                    self.cpe_window_length,
+                    diff=True,
+                    temperature_per_epoch=1e-2,
+                    no_sectors=4,
+                    avg_filter_type="tri",  #"rect",
+                    trainable=False,
+                )
+        
     def reset(self):
         self.lr = self.start_lr.clone()
         # self.butterfly_forward = ButterflyNxN(
@@ -2620,9 +2654,9 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             y_symb = torch.empty_like(y_symb_temp)  # y_symb_temp #
             phi_loop = torch.zeros_like(y_symb_temp).real #to(torch.float32)
 
-            if self.use_cpe == True:
+            if self.use_cpe_in_training == True:
                 for cc in range(self.num_channels):
-                    y_symb[cc,:], phi_loop[cc,:] = self.cpe_in_loop(y_symb_temp[cc,:].clone()) 
+                    y_symb[cc,:], phi_loop[cc,:] = self.cpe_in_loop(y_symb_temp[cc,:].clone())  # [0]
             else:
                 y_symb = y_symb_temp
 
@@ -2822,6 +2856,7 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         IQ_separate=False,
         var_from_estimate=False,
         use_cpe=False,
+        use_cpe_in_training=False,
         cpe_window_length = None,
         angles_per_quadrant=None,
         device="cpu",
@@ -2843,6 +2878,7 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.register_buffer("var_from_estimate", torch.as_tensor(var_from_estimate))
         self.register_buffer("use_cpe", torch.as_tensor(use_cpe))
+        self.register_buffer("use_cpe_in_training", torch.as_tensor(use_cpe_in_training))
         if cpe_window_length != None:
             self.register_buffer("cpe_window_length", torch.as_tensor(cpe_window_length))
         if angles_per_quadrant != None:
@@ -2942,12 +2978,16 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
                     avg_filter_type="tri", #"rect",
                     trainable=False,
                 )
+        if use_cpe_in_training == True:
+            if cpe_window_length is None or angles_per_quadrant is None:
+                raise ValueError("Please provide cpe_window_length and angles_per_quadrant when using CPE.")
+            else:
                 self.cpe_in_loop = BPS(
                     self.angles_per_quadrant,
                     demapper.constellation,
                     self.cpe_window_length,
                     diff=True,
-                    temperature_per_epoch=1e-3,
+                    temperature_per_epoch=1e-2,
                     no_sectors=4,
                     avg_filter_type="tri", #"rect",
                     trainable=False,
@@ -2956,6 +2996,18 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         #                 window_length=cpe_window_length
         #             )
 
+    def init_cpe_for_train(self):
+        self.cpe_in_loop = BPS(
+                    self.angles_per_quadrant,
+                    self.demapper.constellation.squeeze(),
+                    self.cpe_window_length,
+                    diff=True,
+                    temperature_per_epoch=1e-2,
+                    no_sectors=4,
+                    avg_filter_type="tri",  #"rect",
+                    trainable=False,
+                )
+        
     def reset(self):
         self.lr = self.start_lr.clone()
         # self.butterfly_forward = ButterflyNxN(
@@ -3048,10 +3100,13 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             ]  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
 
             y_symb = torch.empty_like(y_symb_temp)  # y_symb_temp #
-            phi_loop = torch.empty_like(y_symb_temp).to(torch.float32)
+            phi_loop = torch.zeros_like(y_symb_temp).to(torch.float32)
 
-            for cc in range(self.num_channels):
-                y_symb[cc,:], phi_loop[cc,:] = self.cpe_in_loop(y_symb_temp[cc,:].clone()) 
+            if self.use_cpe_in_training == True:
+                for cc in range(self.num_channels):
+                    y_symb[cc,:], phi_loop[cc,:] = self.cpe_in_loop(y_symb_temp[cc,:].clone())  # [0]
+            else:
+                y_symb = y_symb_temp
 
             y_symb = y_symb[:, self.cpe_window_length : -self.cpe_window_length ]
             phi_loop = phi_loop[:, self.cpe_window_length : -self.cpe_window_length ]
