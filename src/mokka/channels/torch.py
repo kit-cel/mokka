@@ -2050,7 +2050,9 @@ class PMDPDLChannel(torch.nn.Module):
         )  # THz
         for n in range(self.num_steps):
             pmd_element = self.pmd_elements[n]
-            dgd_dz = pmd_element.DGD_sec * self.dz / self.pmd_correlation_length
+            dgd_dz = (
+                pmd_element.DGD_sec / self.pmd_correlation_length
+            )  # We already multiply dgd_dz later with the step size
             logger.debug("dgd_dz: ", dgd_dz)
             self.betapa[1] = -dgd_dz / 2.0
             self.betapb[1] = dgd_dz / 2.0
