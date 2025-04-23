@@ -191,6 +191,9 @@ class CMloss_NxN(torch.nn.Module):
         angles_per_quadrant = 16,
         lr=0.5e-2,
         requires_q=False,
+        use_corr_avoid=False,
+        alpha_corr=1e-4,
+        corr_window=50,
         IQ_separate=False,
         device="cpu",
         mode="valid",
@@ -207,6 +210,9 @@ class CMloss_NxN(torch.nn.Module):
         self.register_buffer("cpe_window_length", torch.as_tensor(cpe_window_length))
         self.register_buffer("angles_per_quadrant", torch.as_tensor(angles_per_quadrant))
         self.register_buffer("requires_q", torch.as_tensor(requires_q))
+        self.register_buffer("use_corr_avoid", torch.as_tensor(use_corr_avoid))
+        self.register_buffer("alpha_corr", torch.as_tensor(alpha_corr))
+        self.register_buffer("corr_window", torch.as_tensor(corr_window))
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.mode = mode
         temp_sq = torch.abs(demapper.constellation)**2
@@ -316,13 +322,27 @@ class CMloss_NxN(torch.nn.Module):
             y_symb = y_hat[
                 :, 0 :: self.sps
             ]  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
-            
+
+
             y_abs_sq = torch.abs(y_symb)**2
             loss = self.loss_func(
                 # loss, var = ELBO_DP(
                 y_abs_sq,
                 torch.full_like(y_abs_sq, self.kurtosis, requires_grad = False)
             )
+
+            if self.use_corr_avoid == True:
+                #corr_loss = torch.zeros_like(loss)
+                for kk in range(y.shape[0]):             # calculate correlation of each channel to all others
+                    ind_corr = torch.arange(y.shape[0])
+                    ind_corr = ind_corr[ind_corr!=kk]
+                    loss += self.alpha_corr*torch.sum(torch.abs(
+                        torch.conv1d(
+                            y_symb[kk,:].unsqueeze(0),
+                            y_symb[ind_corr,y_symb.shape[-1]-self.corr_window//2:y_symb.shape[-1]+self.corr_window//2].unsqueeze(1),
+                            padding='valid',
+                        )
+                    )**2)
 
             # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
@@ -2021,6 +2041,9 @@ class VAE_LE_NxN(torch.nn.Module):
         var_from_estimate=False,
         use_cpe=False,
         use_cpe_in_training=False,
+        use_corr_avoid=False,
+        alpha_corr=1e-2,
+        corr_window=50,
         cpe_window_length=None,
         angles_per_quadrant=None,
         device="cpu",
@@ -2042,6 +2065,9 @@ class VAE_LE_NxN(torch.nn.Module):
         self.register_buffer("var_from_estimate", torch.as_tensor(var_from_estimate))
         self.register_buffer("use_cpe", torch.as_tensor(use_cpe))
         self.register_buffer("use_cpe_in_training", torch.as_tensor(use_cpe_in_training))
+        self.register_buffer("use_corr_avoid", torch.as_tensor(use_corr_avoid))
+        self.register_buffer("alpha_corr", torch.as_tensor(alpha_corr))
+        self.register_buffer("corr_window", torch.as_tensor(corr_window))
         if cpe_window_length != None:
             self.register_buffer("cpe_window_length", torch.as_tensor(cpe_window_length))
         if angles_per_quadrant != None:
@@ -2287,6 +2313,19 @@ class VAE_LE_NxN(torch.nn.Module):
                 IQ_separate=self.IQ_separate,
             )
 
+            if self.use_corr_avoid == True:
+                #corr_loss = torch.zeros_like(loss)
+                for kk in range(y.shape[0]):             # calculate correlation of each channel to all others
+                    ind_corr = torch.arange(y.shape[0])
+                    ind_corr = ind_corr[ind_corr!=kk]
+                    loss += self.alpha_corr*torch.sum(torch.abs(
+                        torch.conv1d(
+                            y_symb[kk,:].unsqueeze(0),
+                            y_symb[ind_corr,y_symb.shape[-1]-self.corr_window//2:y_symb.shape[-1]+self.corr_window//2].unsqueeze(1),
+                            padding='valid',
+                        )
+                    )**2)
+
             # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
             self.optimizer.step()
@@ -2407,6 +2446,9 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         requires_q=False,
         IQ_separate=False,
         var_from_estimate=False,
+        use_corr_avoid=False,
+        alpha_corr=1e-2,
+        corr_window=50,
         use_cpe=False,
         use_cpe_in_training=False,
         cpe_window_length = None,
@@ -2435,6 +2477,9 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             self.register_buffer("cpe_window_length", torch.as_tensor(cpe_window_length))
         if angles_per_quadrant != None:
             self.register_buffer("angles_per_quadrant", torch.as_tensor(angles_per_quadrant))
+        self.register_buffer("use_corr_avoid", torch.as_tensor(use_corr_avoid))
+        self.register_buffer("alpha_corr", torch.as_tensor(alpha_corr))
+        self.register_buffer("corr_window", torch.as_tensor(corr_window))
 
         self.register_buffer("N_phi_ave", torch.as_tensor(32))      # 50 at code of IPQ
         self.mode = mode
@@ -2707,6 +2752,19 @@ class VAE_LE_flex_NxN(torch.nn.Module):
                 IQ_separate=self.IQ_separate,
             )
 
+            if self.use_corr_avoid == True:
+                #corr_loss = torch.zeros_like(loss)
+                for kk in range(y.shape[0]):             # calculate correlation of each channel to all others
+                    ind_corr = torch.arange(y.shape[0])
+                    ind_corr = ind_corr[ind_corr!=kk]
+                    loss += self.alpha_corr*torch.sum(torch.abs(
+                        torch.conv1d(
+                            y_symb[kk,:].unsqueeze(0),
+                            y_symb[ind_corr,y_symb.shape[-1]-self.corr_window//2:y_symb.shape[-1]+self.corr_window//2].unsqueeze(1),
+                            padding='valid',
+                        )
+                    )**2)
+
             # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
             self.optimizer.step()
@@ -2855,6 +2913,9 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         requires_q=False,
         IQ_separate=False,
         var_from_estimate=False,
+        use_corr_avoid=False,
+        alpha_corr=1e-2,
+        corr_window=50,
         use_cpe=False,
         use_cpe_in_training=False,
         cpe_window_length = None,
@@ -2883,6 +2944,9 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             self.register_buffer("cpe_window_length", torch.as_tensor(cpe_window_length))
         if angles_per_quadrant != None:
             self.register_buffer("angles_per_quadrant", torch.as_tensor(angles_per_quadrant))
+        self.register_buffer("use_corr_avoid", torch.as_tensor(use_corr_avoid))
+        self.register_buffer("alpha_corr", torch.as_tensor(alpha_corr))
+        self.register_buffer("corr_window", torch.as_tensor(corr_window))
 
         self.register_buffer("N_phi_ave", torch.as_tensor(32))      # 50 at code of IPQ
         self.mode = mode
@@ -3157,6 +3221,19 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
                 p_constellation=self.demapper.p_symbols,
                 IQ_separate=self.IQ_separate,
             )
+
+            if self.use_corr_avoid == True:
+                #corr_loss = torch.zeros_like(loss)
+                for kk in range(y.shape[0]):             # calculate correlation of each channel to all others
+                    ind_corr = torch.arange(y.shape[0])
+                    ind_corr = ind_corr[ind_corr!=kk]
+                    loss += self.alpha_corr*torch.sum(torch.abs(
+                        torch.conv1d(
+                            y_symb[kk,:].unsqueeze(0),
+                            y_symb[ind_corr,y_symb.shape[-1]-self.corr_window//2:y_symb.shape[-1]+self.corr_window//2].unsqueeze(1),
+                            padding='valid',
+                        )
+                    )**2)
 
             # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
