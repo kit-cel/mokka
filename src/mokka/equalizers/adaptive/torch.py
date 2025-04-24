@@ -648,15 +648,16 @@ class PilotAEQ_DP(torch.nn.Module):
             (4, (self.pilot_sequence.shape[1] - 2 * eq_offset)),
             dtype=torch.complex64,
         )
-        lr = self.lr  # 1e-3
         out = torch.zeros(
             2, (num_samp - equalizer_length) // self.sps, dtype=torch.complex64
         )
 
         if self.preeq_method is None:
             eq_method = self.method
+            lr = self.lr  # 1e-3
         else:
             eq_method = self.preeq_method
+            lr = self.lr * self.preeq_lradjust
 
         if eq_method in ("LMS"):
             regression_seq = y_cut.clone()[:, : self.pilot_sequence_up.shape[1]]
@@ -697,7 +698,7 @@ class PilotAEQ_DP(torch.nn.Module):
                             * self.pilot_sequence_up.clone().conj().resolve_conj()
                         )
                 if i == self.preeq_offset:
-                    lr = lr * self.preeq_lradjust
+                    lr = self.lr
 
                 if eq_method == "ZFadv":
                     # Update regression seq by calculating h from f and
