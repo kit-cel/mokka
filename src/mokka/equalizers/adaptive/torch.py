@@ -662,13 +662,14 @@ class PilotAEQ_DP(torch.nn.Module):
         if eq_method in ("LMS"):
             regression_seq = y_cut.clone()[:, : self.pilot_sequence_up.shape[1]]
         elif eq_method in ("ZF", "ZFadv"):
-            regression_seq = self.pilot_sequence_up.clone().conj().resolve_conj()
+            regression_seq = self.pilot_sequence_up.clone()
+            # regression_seq = torch.concatenate((torch.zeros((2,1),dtype=torch.complex64),self.pilot_sequence_up.clone()))
         elif eq_method in ("LMSZF"):
             regression_seq = (
                 torch.sqrt(torch.as_tensor(self.lmszf_weight))
                 * y_cut.clone()[:, : self.pilot_sequence_up.shape[1]]
                 + torch.sqrt(1.0 - torch.as_tensor(self.lmszf_weight))
-                * self.pilot_sequence_up.clone().conj().resolve_conj()
+                * self.pilot_sequence_up.clone()
             )
         for i, k in enumerate(range(equalizer_length, num_samp - 1, self.sps)):
             # i counts the actual loop number
@@ -687,15 +688,14 @@ class PilotAEQ_DP(torch.nn.Module):
                     if self.method == "LMS":
                         regression_seq = y_cut.clone()
                     elif self.method in ("ZF", "ZFadv"):
-                        regression_seq = (
-                            self.pilot_sequence_up.clone().conj().resolve_conj()
-                        )
+                        regression_seq = self.pilot_sequence_up.clone()
+                        # regression_seq = torch.concatenate((torch.zeros((2,1),dtype=torch.complex64),self.pilot_sequence_up.clone()))
                     elif self.method == "LMSZF":
                         regression_seq = (
                             torch.sqrt(torch.as_tensor(self.lmszf_weight))
                             * y_cut.clone()[:, : self.pilot_sequence_up.shape[1]]
                             + torch.sqrt(1.0 - torch.as_tensor(self.lmszf_weight))
-                            * self.pilot_sequence_up.clone().conj().resolve_conj()
+                            * self.pilot_sequence_up.clone()
                         )
                 if i == self.preeq_offset:
                     lr = self.lr
