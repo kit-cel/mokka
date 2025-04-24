@@ -641,11 +641,11 @@ class PilotAEQ_DP(torch.nn.Module):
             dtype=torch.complex64,
         )
         e = torch.zeros(
-            (4, (num_samp - equalizer_length) // self.sps),
+            (4, (self.pilot_sequence.shape[1] - 2 * eq_offset)),
             dtype=torch.complex64,
         )
         peak_distortion = torch.zeros(
-            (4, (num_samp - equalizer_length) // self.sps),
+            (4, (self.pilot_sequence.shape[1] - 2 * eq_offset)),
             dtype=torch.complex64,
         )
         lr = self.lr  # 1e-3
