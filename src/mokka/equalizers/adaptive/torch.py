@@ -550,6 +550,7 @@ class PilotAEQ_DP(torch.nn.Module):
         preeq_offset=3000,
         preeq_lradjust=1.0,
         lmszf_weight=0.5,
+        correct_start=True,
     ):
         """
         Initialize :py:class:`PilotAEQ_DP`.
@@ -596,6 +597,7 @@ class PilotAEQ_DP(torch.nn.Module):
         self.preeq_offset = preeq_offset
         self.preeq_lradjust = preeq_lradjust
         self.lmszf_weight = torch.as_tensor(lmszf_weight)
+        self.correct_start = correct_start
 
     def reset(self):
         """Reset :py:class:`PilotAEQ_DP` object."""
@@ -610,11 +612,14 @@ class PilotAEQ_DP(torch.nn.Module):
         :param y: Complex receive signal y
         """
         # y_cut is perfectly aligned with pilot_sequence_up (after cross
-        # correlation & using peak)
+        # correlation & finding peak)
         # The adaptive filter should be able to correct polarization flip on its own
-        y_cut = correct_start_polarization(
-            y, self.pilot_sequence_up[:, : y.shape[1]], correct_polarization=False
-        )
+        if self.correct_start:
+            y_cut = correct_start_polarization(
+                y, self.pilot_sequence_up[:, : y.shape[1]], correct_polarization=False
+            )
+        else:
+            y_cut = y
 
         equalizer_length = self.butterfly_filter.taps.size()[1]
         eq_offset = ((equalizer_length - 1) // 2) // self.sps
