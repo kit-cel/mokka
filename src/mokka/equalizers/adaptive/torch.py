@@ -551,6 +551,10 @@ class PilotAEQ_DP(torch.nn.Module):
         preeq_lradjust=1.0,
         lmszf_weight=0.5,
         correct_start=True,
+        regularize=False,
+        decay_lr=False,
+        lr_start=1e-3,
+        lr_end=1e-4,
     ):
         """
         Initialize :py:class:`PilotAEQ_DP`.
@@ -598,6 +602,10 @@ class PilotAEQ_DP(torch.nn.Module):
         self.preeq_lradjust = preeq_lradjust
         self.lmszf_weight = torch.as_tensor(lmszf_weight)
         self.correct_start = correct_start
+        self.regularize = regularize
+        self.lr_start = lr_start
+        self.lr_end = lr_end
+        self.decay_lr = decay_lr
 
     def reset(self):
         """Reset :py:class:`PilotAEQ_DP` object."""
@@ -623,6 +631,7 @@ class PilotAEQ_DP(torch.nn.Module):
 
         equalizer_length = self.butterfly_filter.taps.size()[1]
         eq_offset = ((equalizer_length - 1) // 2) // self.sps
+        num_steps = self.pilot_sequence.shape[1] - 2 * eq_offset
         num_samp = y_cut.shape[1]
         u = torch.zeros(
             (
@@ -777,6 +786,12 @@ class PilotAEQ_DP(torch.nn.Module):
                     equalizer_length,
                     self.sps,
                 )
+                if self.decay_lr:
+                    # num_steps is not exactly the number of steps due to block size constraints, but
+                    # the learning rate will be linearly interpolated nonetheless
+                    lr = self.lr_start * (
+                        ((self.lr_end / self.lr_start - 1) / num_steps) * i + 1
+                    )
                 if self.adaptive_lr:
                     # For LMS according to Rupp 2011 this stepsize ensures the
                     # stability/robustness
@@ -799,10 +814,15 @@ class PilotAEQ_DP(torch.nn.Module):
                     lr = torch.tensor([lr[0], lr[1], lr[1], lr[0]]).unsqueeze(1)
                     # logger.info("lr: %s", lr.numpy())
                 if i > 0 and i % self.block_size == 0:
+                    if self.regularize:
+                        regularize_param = 1e-3
+                        self.butterfly_filter.taps = (
+                            1 - regularize_param
+                        ) * self.butterfly_filter.taps
                     self.butterfly_filter.taps = self.butterfly_filter.taps + (
                         2
                         * lr
-                        * torch.mean(u[:, i - self.block_size : i, :], dim=1).squeeze()
+                        * torch.sum(u[:, i - self.block_size : i, :], dim=1).squeeze()
                     )
                 filter_taps[:, i, :] = self.butterfly_filter.taps.clone()
                 e[:, i] = torch.stack((e00, e01, e11, e10))
