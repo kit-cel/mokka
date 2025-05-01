@@ -3,7 +3,12 @@
 import torch
 import numpy as np
 
+import logging
+import matplotlib.pyplot as plt
+
 from ..functional.torch import convolve_overlap_save, convolve
+
+logger = logging.getLogger(__name__)
 
 
 class CD_compensation(torch.nn.Module):
@@ -283,7 +288,9 @@ def correct_start_polarization(
     max_values, time_offsets = torch.max(torch.abs(cross_corr), dim=1, keepdim=True)
     # Check if the two maximum values in regular polarization are flipped compare
     # the sum of the maximum values
+    logger.debug("Correct start polarization offsets: %s", time_offsets)
 
+    static_phase_shift = torch.as_tensor(0.0)
     if not correct_polarization or (
         max_values[0] + max_values[1] > max_values[2] + max_values[3]
     ):
