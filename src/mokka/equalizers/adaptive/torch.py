@@ -819,11 +819,10 @@ class PilotAEQ_DP(torch.nn.Module):
                         self.butterfly_filter.taps = (
                             1 - regularize_param
                         ) * self.butterfly_filter.taps
-                    self.butterfly_filter.taps = self.butterfly_filter.taps + (
-                        2
-                        * lr
-                        * torch.sum(u[:, i - self.block_size : i, :], dim=1).squeeze()
+                    update = (
+                        2 * lr * torch.mean(u[:, i - self.block_size : i, :], dim=1)
                     )
+                    self.butterfly_filter.taps = self.butterfly_filter.taps + update
                 filter_taps[:, i, :] = self.butterfly_filter.taps.clone()
                 e[:, i] = torch.stack((e00, e01, e11, e10))
                 peak_distortion[:, i] = torch.mean(
