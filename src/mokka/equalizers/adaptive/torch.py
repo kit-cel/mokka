@@ -366,7 +366,7 @@ class CMloss_NxN(torch.nn.Module):
         # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
 
         out_const = torch.cat(out, axis=1).detach().clone()
-        out_q = out_const * (torch.sqrt(torch.mean(torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
+        out_q = out_const * (torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
 
         for cc in range(self.num_channels):
             out_q[cc,:] = self.cpe(out_q[cc,:])[0]
@@ -836,7 +836,7 @@ class MSEloss_NxN(torch.nn.Module):
         # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
 
         out_const = torch.cat(out, axis=1).detach().clone()
-        out_const *= (torch.sqrt(torch.mean(torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
+        out_const *= (torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
 
         if self.use_cpe == True:
             for cc in range(self.num_channels):
@@ -1167,7 +1167,7 @@ class MSEflex_NxN(torch.nn.Module):
         ###################
 
         out_const = torch.cat(out, axis=1).detach().clone()
-        out_const *= (torch.sqrt(torch.mean(torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
+        out_const *= (torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
 
         if self.use_cpe == True:
             for cc in range(self.num_channels):
@@ -2366,7 +2366,7 @@ class VAE_LE_NxN(torch.nn.Module):
             out_q.append(output_q)
 
         out_const = torch.cat(out, axis=1).detach()#.clone()
-        out_const *=  (torch.sqrt(torch.mean(torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
+        out_const *=  (torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
         var_hat = torch.cat(var_out, axis=-1).view(-1,self.num_channels).detach().mean(0) / 2.0 #.clone()
 ##########################
         phi_full_full = torch.cat(phi_full, axis=1).detach()#.clone()
@@ -2840,7 +2840,7 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         # print("loss: ", loss, "\t\t\t var: ", var)
         var_hat = torch.cat(var_out, axis=-1).view(-1,self.num_channels).detach().mean(0) / 2.0 #.clone()
         out_const = torch.cat(out, axis=1).detach().clone()
-        out_const *= (torch.sqrt(torch.mean(torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
+        out_const *= (torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
 
         if self.use_cpe == True:
             for cc in range(self.num_channels):
@@ -3313,7 +3313,7 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         ###################
 
         out_const = torch.cat(out, axis=1).detach().clone()
-        out_const *= (torch.sqrt(torch.mean(torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
+        out_const *= (torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
         var_hat = torch.cat(var_out, axis=-1).view(-1,self.num_channels).detach().mean(0) / 2.0 #.clone()
 
         if self.use_cpe == True:
