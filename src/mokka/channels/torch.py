@@ -73,7 +73,7 @@ class PhasenoiseWiener(torch.nn.Module):
         self.start_phase_init = start_phase_init
         self.start_phase_width = start_phase_width
 
-    def forward(self, x, N0=None, sigma_phi=None, N_up=1):
+    def forward(self, x, N0=None, sigma_phi=None, N_up=1, return_phi=False):
         r"""Apply Wiener phase noise to a complex signal.
 
         :param x: ipnut signal to apply noise to
@@ -85,11 +85,16 @@ class PhasenoiseWiener(torch.nn.Module):
             x = self.awgn(x, N0)
         # for upsampled data, the variance per sample is reduced by N_up
         sigma_phi_samp = sigma_phi / np.sqrt(N_up)
-        x = self.apply(x, sigma_phi_samp)
-        logger.debug("x size: %s", x.size())
-        return x
+        if return_phi:
+            x, phi = self.apply(x, sigma_phi_samp, return_phi=return_phi)
+            logger.debug("x size: %s", x.size())
+            return x, phi
+        else:
+            x = self.apply(x, sigma_phi_samp, return_phi=return_phi)
+            logger.debug("x size: %s", x.size())
+            return x
 
-    def apply(self, x, sigma_phi=None):
+    def apply(self, x, sigma_phi=None, return_phi=False):
         """
         Apply only Wiener phase noise.
 
@@ -121,7 +126,10 @@ class PhasenoiseWiener(torch.nn.Module):
         else:
             raise ValueError("x is expected to have either one or two dimensions (multiple channels with same phase noise).")
         logger.debug("x size: %s", x.size())
-        return x
+        if return_phi:
+            return x, phi
+        else:
+            return x
 
     def sample_noise(self, x, sigma_phi=None):
         """
