@@ -155,9 +155,17 @@ def test_gaussian_demapper():
     FIXTURE_DIR / "separated_demapper.bin", FIXTURE_DIR / "separated_mapper.bin"
 )
 def test_separated_simple_demapper(datafiles):
-    m = 4
+    m = 6
     bits = torch.from_numpy(
-        np.array([[0, 1, 0, 0], [1, 0, 0, 0], [1, 1, 1, 1], [0, 1, 0, 1]], dtype=int)
+        np.array(
+            [
+                [0, 1, 0, 0, 0, 1],
+                [1, 1, 1, 0, 0, 0],
+                [1, 1, 1, 1, 1, 1],
+                [1, 0, 0, 1, 0, 1],
+            ],
+            dtype=int,
+        )
     )
     for df in datafiles.iterdir():
         if "separated_demapper" in df.name:

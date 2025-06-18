@@ -944,7 +944,7 @@ class SeparatedSimpleDemapper(torch.nn.Module):
             y_imag = torch.unsqueeze(y[:, 1], 1)
         llr_real = self.real2(self.ReLU(self.real1(y_real)))
         llr_imag = self.imag2(self.ReLU(self.imag1(y_imag)))
-        result = torch.cat((llr_imag, llr_real), 1)
+        result = torch.cat((llr_real, llr_imag), 1)
         if self.training:
             return result
         return -1 * result
