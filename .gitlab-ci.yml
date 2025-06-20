@@ -74,10 +74,10 @@ pre-commit:
 pytest:
   stage: test
   image: python:3.12
-  before_script: |
-    pip install --no-cache-dir uv
-    uv sync
-    uv pip install .
+  before_script: 
+    - pip install --no-cache-dir uv
+    - uv sync
+    - uv pip install .
 
-  script: |
-    pytest tests/
+  script:
+    - uv run pytest tests/
