@@ -1,6 +1,6 @@
 [build-system]
-requires = ["pdm-backend"]
-build-backend = "pdm.backend"
+requires = ["uv_build>=0.7.13,<0.8.0"]
+build-backend = "uv_build"
 
 [tool.poetry]
 name = "mokka"
