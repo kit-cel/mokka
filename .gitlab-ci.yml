@@ -75,9 +75,9 @@ pytest:
   stage: test
   image: python:3.12
   before_script: |
-    pip install --no-cache-dir poetry
-    poetry install --all-extras --with=dev
-    source `poetry env info --path`/bin/activate
+    pip install --no-cache-dir uv
+    uv sync
+    uv pip install .
 
   script: |
     pytest tests/
