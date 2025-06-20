@@ -208,15 +208,16 @@ class ButterflyNxN(torch.nn.Module):
             if num_taps is None:
                 raise ValueError("Either taps or num_taps must be set")
             filter_taps = torch.zeros(
-                (num_channels,num_channels, num_taps), dtype=torch.complex64,
+                (num_channels, num_channels, num_taps),
+                dtype=torch.complex64,
             )
             for diag_filter in range(num_channels):
-                filter_taps[
-                    diag_filter,diag_filter, (num_taps-1) // 2
-                ] = 0.5+1j*0
-                filter_taps[
-                    diag_filter,diag_filter, (num_taps-1) // 2 +1
-                ] = 0.5+1j*0 #1.0+1j*0  # filter h_ij with i=j (diagonal of MIMO matrix) are initialized with Dirac
+                filter_taps[diag_filter, diag_filter, (num_taps - 1) // 2] = (
+                    0.5 + 1j * 0
+                )
+                filter_taps[diag_filter, diag_filter, (num_taps - 1) // 2 + 1] = (
+                    0.5 + 1j * 0
+                )  # 1.0+1j*0  # filter h_ij with i=j (diagonal of MIMO matrix) are initialized with Dirac
             self.num_taps = num_taps
         else:
             assert (taps.dim() == 2 and taps.size()[0] == num_channels**2) or (
@@ -255,7 +256,12 @@ class ButterflyNxN(torch.nn.Module):
         return torch.squeeze(
             torch.conv1d(
                 y,
-                torch.flip(self.taps.reshape(self.num_channels, self.num_channels, self.num_taps), (2,)),
+                torch.flip(
+                    self.taps.reshape(
+                        self.num_channels, self.num_channels, self.num_taps
+                    ),
+                    (2,),
+                ),
                 padding=self.mode,
             )
         )
@@ -274,10 +280,16 @@ class ButterflyNxN(torch.nn.Module):
         return torch.squeeze(
             torch.conv1d(
                 y,
-                torch.flip(h_abs_sq.reshape(self.num_channels, self.num_channels, self.num_taps), (2,)),
+                torch.flip(
+                    h_abs_sq.reshape(
+                        self.num_channels, self.num_channels, self.num_taps
+                    ),
+                    (2,),
+                ),
                 padding=self.mode,
             )
         )
+
 
 class Butterfly4x4(torch.nn.Module):
     """

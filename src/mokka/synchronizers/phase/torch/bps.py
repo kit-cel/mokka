@@ -83,14 +83,15 @@ class BPS(torch.nn.Module):
 
         if PS_aware:
             if noise_sigma is None or p_symbols is None:
-                raise ValueError("noise_sigma and p_symbols required when using PS_aware-BPS")
+                raise ValueError(
+                    "noise_sigma and p_symbols required when using PS_aware-BPS"
+                )
             else:
-                self.p_symbols=p_symbols
-                self.noise_sigma=noise_sigma
-                self.PS_aware=PS_aware
+                self.p_symbols = p_symbols
+                self.noise_sigma = noise_sigma
+                self.PS_aware = PS_aware
         else:
-            self.PS_aware=False
-
+            self.PS_aware = False
 
     @property
     def temperature_per_epoch(self):
@@ -178,7 +179,7 @@ class BPS(torch.nn.Module):
             Concept With Feedforward Carrier Recovery for M-QAM Constellations, \
             Journal of Lightwave Technology 27, pp 989-999 (2009)
         """
-        #softmin = torch.nn.Softmin(dim=1)
+        # softmin = torch.nn.Softmin(dim=1)
         if self.PS_aware:
             softm = torch.nn.Softmax(dim=1)
         else:
@@ -217,7 +218,9 @@ class BPS(torch.nn.Module):
             for i in range(Ew.shape[0]):
                 mvg = self._bps_idx_torch(Ew[i], angles)
                 if self.no_sectors == 4:
-                    smvg = softm(mvg / self.temperature_per_epoch) # softmin(mvg / self.temperature_per_epoch)
+                    smvg = softm(
+                        mvg / self.temperature_per_epoch
+                    )  # softmin(mvg / self.temperature_per_epoch)
                     sangles = 4 * torch.squeeze(angles)
                     ph = (
                         unwrap(
@@ -232,7 +235,9 @@ class BPS(torch.nn.Module):
                         / 4
                     )
                 else:
-                    smvg = softm(mvg / self.temperature_per_epoch) #softmin(mvg / self.temperature_per_epoch)
+                    smvg = softm(
+                        mvg / self.temperature_per_epoch
+                    )  # softmin(mvg / self.temperature_per_epoch)
                     sangles = torch.squeeze(angles)
                     ph = unwrap(
                         torch.angle(
@@ -260,19 +265,22 @@ class BPS(torch.nn.Module):
         EE = torch.unsqueeze(x, 1) * torch.exp(1j * angles)
         idx = torch.zeros(x.shape[0], dtype=torch.int, device=x.device)
         if self.PS_aware:
-            q = (
-                torch.exp(
-                    (-1 * torch.abs(torch.unsqueeze(EE, 2) - self.symbols.to(device=x.device)) ** 2)
-                    / (2 * torch.clip(self.noise_sigma.to(device=x.device), 0.001)**2)
+            q = torch.exp(
+                (
+                    -1
+                    * torch.abs(
+                        torch.unsqueeze(EE, 2) - self.symbols.to(device=x.device)
+                    )
+                    ** 2
                 )
-                * self.p_symbols[None, :].to(device=x.device)
-            )
+                / (2 * torch.clip(self.noise_sigma.to(device=x.device), 0.001) ** 2)
+            ) * self.p_symbols[None, :].to(device=x.device)
             q = q + 1e-8
-            dist = torch.max( q / torch.sum(q, axis=2)[:,:, None], dim=2) [0]
+            dist = torch.max(q / torch.sum(q, axis=2)[:, :, None], dim=2)[0]
         else:
-            dist = torch.min(torch.abs(torch.unsqueeze(EE, 2) - self.symbols) ** 2, dim=2)[
-                0
-            ]
+            dist = torch.min(
+                torch.abs(torch.unsqueeze(EE, 2) - self.symbols) ** 2, dim=2
+            )[0]
 
         # print("dist shape", dist.shape)
         # unfold = torch.nn.Unfold(0, 2 * self.N + 1, 3)
@@ -310,7 +318,7 @@ class BPS(torch.nn.Module):
             return mvg
         else:
             if self.PS_aware:
-                idx = torch.argmax(mvg, dim=1) #torch.argmin(mvg, dim=1)
+                idx = torch.argmax(mvg, dim=1)  # torch.argmin(mvg, dim=1)
             else:
                 idx = torch.argmin(mvg, dim=1)
             return idx

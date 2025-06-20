@@ -118,13 +118,15 @@ class PhasenoiseWiener(torch.nn.Module):
         #     + torch.rand(1, device=x.device, dtype=torch.float32)
         #     * self.start_phase_width
         # )
-        phi = self.sample_noise(x,sigma_phi=sigma_phi)
+        phi = self.sample_noise(x, sigma_phi=sigma_phi)
         if x.ndim == 2:
             x = x * torch.exp(1j * phi).unsqueeze(1)
         elif x.ndim == 1:
             x = x * torch.exp(1j * phi)
         else:
-            raise ValueError("x is expected to have either one or two dimensions (multiple channels with same phase noise).")
+            raise ValueError(
+                "x is expected to have either one or two dimensions (multiple channels with same phase noise)."
+            )
         logger.debug("x size: %s", x.size())
         if return_phi:
             return x, phi
@@ -157,11 +159,11 @@ class PhasenoiseWiener(torch.nn.Module):
         )
         logger.debug("x size: %s", x.size())
         return phi
-    
+
     def interpolateBy2_phase_noise(self, phi, sigma_phi=None):
-        phi_up = torch.zeros(phi.shape[-1], device=phi.device, dtype = phi.dtype)
+        phi_up = torch.zeros(phi.shape[-1], device=phi.device, dtype=phi.dtype)
         phi_up[0::2] = phi
-        phi_up[1::2] = (phi[::2] + phi[1::2])/2 + 0.5*sigma_phi*torch.randn(
+        phi_up[1::2] = (phi[::2] + phi[1::2]) / 2 + 0.5 * sigma_phi * torch.randn(
             phi.shape[-1], device=phi.device, dtype=torch.float32
         )
         return phi_up

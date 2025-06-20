@@ -20,7 +20,7 @@ from collections import namedtuple
 class CMA(torch.nn.Module):
     """Class to perform CMA equalization."""
 
-    butterfly_filter: ButterflyNxN #Butterfly2x2
+    butterfly_filter: ButterflyNxN  # Butterfly2x2
 
     def __init__(
         self,
@@ -33,7 +33,7 @@ class CMA(torch.nn.Module):
         no_singularity=False,
         singularity_length=3000,
         num_channels=2,
-        mode='valid'
+        mode="valid",
     ):
         """
         Initialize :py:class:`CMA`.
@@ -77,20 +77,24 @@ class CMA(torch.nn.Module):
         # Do some clever initalization, first only equalize x-pol and then enable y-pol
         self.register_buffer("no_singularity", torch.as_tensor(no_singularity))
         self.register_buffer("singularity_length", torch.as_tensor(singularity_length))
-        if self.no_singularity: ### FIXME: taps.shape = num_channels, num_channels, num_taps
+        if (
+            self.no_singularity
+        ):  ### FIXME: taps.shape = num_channels, num_channels, num_taps
             self.butterfly_filter.taps[2, :] = 0
             self.butterfly_filter.taps[3, :] = 0
 
     def reset(self):
         """Reset equalizer and butterfly filters."""
         self.butterfly_filter = ButterflyNxN(
-                num_taps=self.filter_length,
-                num_channels=self.num_channels,
-                trainable=True,
-                timedomain=True,
-                mode=self.mode,
-            )
-        if self.no_singularity:### FIXME: taps.shape = num_channels, num_channels, num_taps
+            num_taps=self.filter_length,
+            num_channels=self.num_channels,
+            trainable=True,
+            timedomain=True,
+            mode=self.mode,
+        )
+        if (
+            self.no_singularity
+        ):  ### FIXME: taps.shape = num_channels, num_channels, num_taps
             self.butterfly_filter.taps[2, :] = 0
             self.butterfly_filter.taps[3, :] = 0
 
@@ -114,7 +118,9 @@ class CMA(torch.nn.Module):
         R = self.R  # 1.0
         lr = self.lr  # 1e-3
         out = torch.zeros(
-            self.num_channels, (num_samp - equalizer_length) // self.sps, dtype=torch.complex64
+            self.num_channels,
+            (num_samp - equalizer_length) // self.sps,
+            dtype=torch.complex64,
         )
         # We try to put the symbol of interest in the center tap of the equalizer
         eq_offset = (equalizer_length - 1) // 2
@@ -137,7 +143,9 @@ class CMA(torch.nn.Module):
             update = torch.empty_like(self.butterfly_filter.taps)
             for i in range(self.num_channels):
                 for o in range(self.num_channels):
-                    update[i,o,:] = 0   ### FIXME: taps.shape = num_channels, num_channels, num_taps
+                    update[i, o, :] = (
+                        0  ### FIXME: taps.shape = num_channels, num_channels, num_taps
+                    )
 
             self.butterfly_filter.taps = self.butterfly_filter.taps + (
                 2
@@ -169,7 +177,8 @@ class CMA(torch.nn.Module):
     def get_error_signal(self):
         """Return error signal used to adapt equalizer taps."""
         return self.out_e
-    
+
+
 ##############################################################################################
 ##############################################################################################
 
@@ -182,13 +191,13 @@ class CMloss_NxN(torch.nn.Module):
     def __init__(
         self,
         num_channels=None,
-        taps = None,
+        taps=None,
         num_taps=None,
         demapper=None,
         sps=2,
         block_size=200,
-        cpe_window_length = 50,
-        angles_per_quadrant = 16,
+        cpe_window_length=50,
+        angles_per_quadrant=16,
         lr=0.5e-2,
         requires_q=False,
         use_corr_avoid=False,
@@ -208,20 +217,26 @@ class CMloss_NxN(torch.nn.Module):
         if num_taps != None:
             self.register_buffer("num_taps", torch.as_tensor(num_taps))
         self.register_buffer("cpe_window_length", torch.as_tensor(cpe_window_length))
-        self.register_buffer("angles_per_quadrant", torch.as_tensor(angles_per_quadrant))
+        self.register_buffer(
+            "angles_per_quadrant", torch.as_tensor(angles_per_quadrant)
+        )
         self.register_buffer("requires_q", torch.as_tensor(requires_q))
         self.register_buffer("use_corr_avoid", torch.as_tensor(use_corr_avoid))
         self.register_buffer("alpha_corr", torch.as_tensor(alpha_corr))
         self.register_buffer("corr_window", torch.as_tensor(corr_window))
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.mode = mode
-        temp_sq = torch.abs(demapper.constellation)**2
-        self.kurtosis = torch.sum(demapper.p_symbols* temp_sq**2/temp_sq )     #/pow_mean --> consider pow_mean as 1
+        temp_sq = torch.abs(demapper.constellation) ** 2
+        self.kurtosis = torch.sum(
+            demapper.p_symbols * temp_sq**2 / temp_sq
+        )  # /pow_mean --> consider pow_mean as 1
 
-         ########## Equalizer ############
+        ########## Equalizer ############
         if taps is None:
             if num_taps is None:
-                raise ValueError("Please provide either a valid num_taps_EQ or taps_EQ.")
+                raise ValueError(
+                    "Please provide either a valid num_taps_EQ or taps_EQ."
+                )
             else:
                 self.butterfly_forward = ButterflyNxN(
                     num_taps=num_taps,
@@ -260,13 +275,12 @@ class CMloss_NxN(torch.nn.Module):
             diff=False,
             temperature_per_epoch=1e-3,
             no_sectors=4,
-            avg_filter_type="tri", #"rect",
+            avg_filter_type="tri",  # "rect",
             trainable=False,
         )
         # self.cpe = vandv.ViterbiViterbi(
         #                 window_length=cpe_window_length
         #             )
-
 
     def reset(self):
         self.lr = self.start_lr.clone()
@@ -323,26 +337,35 @@ class CMloss_NxN(torch.nn.Module):
                 :, 0 :: self.sps
             ]  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
 
-
-            y_abs_sq = torch.abs(y_symb)**2
+            y_abs_sq = torch.abs(y_symb) ** 2
             loss = self.loss_func(
                 # loss, var = ELBO_DP(
                 y_abs_sq,
-                torch.full_like(y_abs_sq, self.kurtosis, requires_grad = False)
+                torch.full_like(y_abs_sq, self.kurtosis, requires_grad=False),
             )
 
             if self.use_corr_avoid == True:
-                #corr_loss = torch.zeros_like(loss)
-                for kk in range(y.shape[0]):             # calculate correlation of each channel to all others
+                # corr_loss = torch.zeros_like(loss)
+                for kk in range(
+                    y.shape[0]
+                ):  # calculate correlation of each channel to all others
                     ind_corr = torch.arange(y.shape[0])
-                    ind_corr = ind_corr[ind_corr!=kk]
-                    loss += self.alpha_corr*torch.sum(torch.abs(
-                        torch.conv1d(
-                            y_symb[kk,:].unsqueeze(0),
-                            y_symb[ind_corr,y_symb.shape[-1]-self.corr_window//2:y_symb.shape[-1]+self.corr_window//2].unsqueeze(1),
-                            padding='valid',
+                    ind_corr = ind_corr[ind_corr != kk]
+                    loss += self.alpha_corr * torch.sum(
+                        torch.abs(
+                            torch.conv1d(
+                                y_symb[kk, :].unsqueeze(0),
+                                y_symb[
+                                    ind_corr,
+                                    y_symb.shape[-1]
+                                    - self.corr_window // 2 : y_symb.shape[-1]
+                                    + self.corr_window // 2,
+                                ].unsqueeze(1),
+                                padding="valid",
+                            )
                         )
-                    )**2)
+                        ** 2
+                    )
 
             # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
@@ -366,10 +389,18 @@ class CMloss_NxN(torch.nn.Module):
         # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
 
         out_const = torch.cat(out, axis=1).detach().clone()
-        out_q = out_const * (torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
+        out_q = out_const * (
+            torch.sqrt(
+                torch.sum(
+                    self.demapper.p_symbols
+                    * torch.abs(self.demapper.constellation) ** 2
+                )
+            )
+            / torch.sqrt(torch.mean(torch.abs(out_const) ** 2, dim=-1))
+        ).unsqueeze(1).repeat(1, out_const.shape[-1])
 
         for cc in range(self.num_channels):
-            out_q[cc,:] = self.cpe(out_q[cc,:])[0]
+            out_q[cc, :] = self.cpe(out_q[cc, :])[0]
         if self.IQ_separate == True:
             num_level = self.demapper.constellation.shape[-1]
             q_hat = torch.zeros(
@@ -395,14 +426,13 @@ class CMloss_NxN(torch.nn.Module):
                 dtype=torch.float32,
             )
             for out_chan in range(out_q.shape[0]):
-                q_hat[out_chan, :, :] = self.demapper(
-                    out_q[out_chan, :]
-                ).unsqueeze(0)
-
+                q_hat[out_chan, :, :] = self.demapper(out_q[out_chan, :]).unsqueeze(0)
 
         if self.requires_q == True:
             eq_out = namedtuple("eq_out", ["y", "q", "loss"])
-            return eq_out(out_q, q_hat, loss) #eq_out(torch.cat(out, axis=1), torch.cat(out_q, axis=1), loss)
+            return eq_out(
+                out_q, q_hat, loss
+            )  # eq_out(torch.cat(out, axis=1), torch.cat(out_q, axis=1), loss)
         return torch.cat(out, axis=1)
 
     def update_lr(self, new_lr):
@@ -445,8 +475,10 @@ class RDloss_NxN(torch.nn.Module):
         self.register_buffer("requires_q", torch.as_tensor(requires_q))
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.mode = mode
-        temp_sq = torch.abs(demapper.constellation)**2
-        self.kurtosis = torch.sum(demapper.p_symbols* temp_sq**2/temp_sq )     #/pow_mean --> consider pow_mean as 1
+        temp_sq = torch.abs(demapper.constellation) ** 2
+        self.kurtosis = torch.sum(
+            demapper.p_symbols * temp_sq**2 / temp_sq
+        )  # /pow_mean --> consider pow_mean as 1
 
         self.loss_func = torch.nn.MSELoss()
         self.butterfly_forward = ButterflyNxN(
@@ -559,11 +591,11 @@ class RDloss_NxN(torch.nn.Module):
                 (self.butterfly_forward.num_taps - 1)
                 // 2 : -((self.butterfly_forward.num_taps - 1) // 2)
             ]
-            y_abs_sq = torch.abs(y_symb)**2
+            y_abs_sq = torch.abs(y_symb) ** 2
             loss = self.loss_func(
                 # loss, var = ELBO_DP(
-                torch.abs(y_symb)**2,
-                torch.full_like(y_abs_sq, self.kurtosis, requires_grad = False)
+                torch.abs(y_symb) ** 2,
+                torch.full_like(y_abs_sq, self.kurtosis, requires_grad=False),
             )
 
             # print("noise_sigma: ", self.demapper.noise_sigma)
@@ -596,6 +628,7 @@ class RDloss_NxN(torch.nn.Module):
         self.lr = new_lr
         for group in self.optimizer.param_groups:
             group["lr"] = self.lr
+
 
 ##############################################################################################
 ##############################################################################################
@@ -634,13 +667,17 @@ class MSEloss_NxN(torch.nn.Module):
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.register_buffer("use_cpe", torch.as_tensor(use_cpe))
         if cpe_window_length != None:
-            self.register_buffer("cpe_window_length", torch.as_tensor(cpe_window_length))
+            self.register_buffer(
+                "cpe_window_length", torch.as_tensor(cpe_window_length)
+            )
         if angles_per_quadrant != None:
-            self.register_buffer("angles_per_quadrant", torch.as_tensor(angles_per_quadrant))
+            self.register_buffer(
+                "angles_per_quadrant", torch.as_tensor(angles_per_quadrant)
+            )
 
-        self.register_buffer("N_phi_ave", torch.as_tensor(50))      # 50 at code of IPQ
+        self.register_buffer("N_phi_ave", torch.as_tensor(50))  # 50 at code of IPQ
         self.mode = mode
-        
+
         # f = scipy.io.loadmat("waveforms/data_from_IPQ/processed_data_90GBd_LO17_16qam_gray_VPPx_270mV_VPPy_210mV_scale25mV_C4CF4_10dBm_1.mat") #weights.mat")
         # weigh = f.get('wk_cma')
         # taps = torch.zeros(8,8,201, dtype=torch.complex64)
@@ -669,9 +706,11 @@ class MSEloss_NxN(torch.nn.Module):
 
         if use_cpe == True:
             if cpe_window_length is None or angles_per_quadrant is None:
-                raise ValueError("Please provide cpe_window_length and angles_per_quadrant when using CPE.")
+                raise ValueError(
+                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                )
             else:
-                #cpe_window_length = 50
+                # cpe_window_length = 50
                 self.cpe = BPS(
                     self.angles_per_quadrant,
                     demapper.constellation,
@@ -679,7 +718,7 @@ class MSEloss_NxN(torch.nn.Module):
                     diff=False,
                     temperature_per_epoch=1e-3,
                     no_sectors=4,
-                    avg_filter_type="tri", #"rect",
+                    avg_filter_type="tri",  # "rect",
                     trainable=False,
                 )
         # self.cpe = vandv.ViterbiViterbi(
@@ -718,7 +757,7 @@ class MSEloss_NxN(torch.nn.Module):
         # We will process sps * block_size - 2 * num_taps because we will cut out the first and last block
 
         ref_up = torch.zeros_like(y)
-        ref_up[:,::self.sps] = x[:,:y.shape[-1]//self.sps]
+        ref_up[:, :: self.sps] = x[:, : y.shape[-1] // self.sps]
 
         index_padding = (self.butterfly_forward.num_taps - 1) // 2
         for i, k in enumerate(
@@ -783,26 +822,41 @@ class MSEloss_NxN(torch.nn.Module):
                 (self.butterfly_forward.num_taps - 1)
                 // 2 : -((self.butterfly_forward.num_taps - 1) // 2)
             ]
-            #ref_index = in_index[ (self.butterfly_forward.num_taps - 1) : ] + (self.butterfly_forward.num_taps + 1)*self.sps + 86
-            temp_ref = ref_up[:,y_index]
-            ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again 
+            # ref_index = in_index[ (self.butterfly_forward.num_taps - 1) : ] + (self.butterfly_forward.num_taps + 1)*self.sps + 86
+            temp_ref = ref_up[:, y_index]
+            ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(
+                self.num_channels, -1
+            )  # .nonzero() downsamples to 1sps again
 
-            
             if self.use_cpe == True:
                 N_phi_ave = self.N_phi_ave
-                phi_off = (torch.angle(y_symb) - torch.angle(ref)).detach() # unwrap necessary?
-                y_phi_sum = torch.zeros_like(y_symb)[:,:-N_phi_ave]
+                phi_off = (
+                    torch.angle(y_symb) - torch.angle(ref)
+                ).detach()  # unwrap necessary?
+                y_phi_sum = torch.zeros_like(y_symb)[:, :-N_phi_ave]
                 for ii in range(N_phi_ave):
-                    y_phi_sum += torch.exp(1j*phi_off[:,ii:-(N_phi_ave-ii)])    # sum in the complex domain
+                    y_phi_sum += torch.exp(
+                        1j * phi_off[:, ii : -(N_phi_ave - ii)]
+                    )  # sum in the complex domain
                 phi_ma = torch.angle(y_phi_sum)
-                ref_loss = ref[:,N_phi_ave//2:-(N_phi_ave-N_phi_ave//2)] *torch.exp(1j*phi_ma) 
-                loss = self.loss_func( y_symb[:,N_phi_ave//2:-(N_phi_ave-N_phi_ave//2)].real, ref_loss.real ) + self.loss_func( y_symb[:,N_phi_ave//2:-(N_phi_ave-N_phi_ave//2)].imag, ref_loss.imag)
+                ref_loss = ref[
+                    :, N_phi_ave // 2 : -(N_phi_ave - N_phi_ave // 2)
+                ] * torch.exp(1j * phi_ma)
+                loss = self.loss_func(
+                    y_symb[:, N_phi_ave // 2 : -(N_phi_ave - N_phi_ave // 2)].real,
+                    ref_loss.real,
+                ) + self.loss_func(
+                    y_symb[:, N_phi_ave // 2 : -(N_phi_ave - N_phi_ave // 2)].imag,
+                    ref_loss.imag,
+                )
                 # for cc in range(self.num_channels):
                 #     ref[cc,:] *= torch.exp(1j*self.cpe(y_symb[cc,:])[1])    # rotate reference to make update independet of phase noise
                 # loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
                 phi_plot.append(phi_ma)
             else:
-                loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
+                loss = self.loss_func(y_symb.real, ref.real) + self.loss_func(
+                    y_symb.imag, ref.imag
+                )
 
             # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
@@ -819,7 +873,7 @@ class MSEloss_NxN(torch.nn.Module):
                 output_symbols
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
 
-#########################
+            #########################
             ref_tmp = ref[
                 :, : self.block_size
             ]  # - self.butterfly_forward.num_taps // 2]
@@ -827,7 +881,7 @@ class MSEloss_NxN(torch.nn.Module):
             ref_out.append(
                 ref_tmp
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
-##############################
+            ##############################
 
             output_q = q_hat[:, : self.block_size, :]
             out_q.append(output_q)
@@ -836,11 +890,23 @@ class MSEloss_NxN(torch.nn.Module):
         # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
 
         out_const = torch.cat(out, axis=1).detach().clone()
-        out_const *= (torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
+        out_const *= (
+            (
+                torch.sqrt(
+                    torch.sum(
+                        self.demapper.p_symbols
+                        * torch.abs(self.demapper.constellation) ** 2
+                    )
+                )
+                / torch.sqrt(torch.mean(torch.abs(out_const) ** 2, dim=-1))
+            )
+            .unsqueeze(1)
+            .repeat(1, out_const.shape[-1])
+        )
 
         if self.use_cpe == True:
             for cc in range(self.num_channels):
-                out_const[cc,:] = self.cpe(out_const[cc,:])[0]
+                out_const[cc, :] = self.cpe(out_const[cc, :])[0]
             if self.IQ_separate == True:
                 num_level = self.demapper.constellation.shape[-1]
                 q_hat = torch.zeros(
@@ -876,8 +942,8 @@ class MSEloss_NxN(torch.nn.Module):
         # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
 
         if self.requires_q == True:
-            eq_out = namedtuple("eq_out", ["y", "q", "loss"]) #, "phi_ref"])
-            return eq_out(out_const, q_hat, loss) #, torch.cat(phi_plot, axis=1))
+            eq_out = namedtuple("eq_out", ["y", "q", "loss"])  # , "phi_ref"])
+            return eq_out(out_const, q_hat, loss)  # , torch.cat(phi_plot, axis=1))
         return out_const
 
     def update_lr(self, new_lr):
@@ -888,7 +954,7 @@ class MSEloss_NxN(torch.nn.Module):
 
 ##############################################################################################
 ##############################################################################################
- ##############################################################################################
+##############################################################################################
 ##############################################################################################
 
 
@@ -904,12 +970,12 @@ class MSEflex_NxN(torch.nn.Module):
         demapper,
         sps,
         block_size=200,
-        symb_per_step = 10,
+        symb_per_step=10,
         lr=0.5e-2,
         requires_q=False,
         IQ_separate=False,
         use_cpe=False,
-        cpe_window_length = None,
+        cpe_window_length=None,
         angles_per_quadrant=None,
         device="cpu",
         mode="valid",
@@ -927,13 +993,17 @@ class MSEflex_NxN(torch.nn.Module):
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.register_buffer("use_cpe", torch.as_tensor(use_cpe))
         if cpe_window_length != None:
-            self.register_buffer("cpe_window_length", torch.as_tensor(cpe_window_length))
+            self.register_buffer(
+                "cpe_window_length", torch.as_tensor(cpe_window_length)
+            )
         if angles_per_quadrant != None:
-            self.register_buffer("angles_per_quadrant", torch.as_tensor(angles_per_quadrant))
+            self.register_buffer(
+                "angles_per_quadrant", torch.as_tensor(angles_per_quadrant)
+            )
 
-        self.register_buffer("N_phi_ave", torch.as_tensor(32))      # 50 at code of IPQ
+        self.register_buffer("N_phi_ave", torch.as_tensor(32))  # 50 at code of IPQ
         self.mode = mode
-        
+
         # f = scipy.io.loadmat("waveforms/data_from_IPQ/weights.mat")
         # weigh = f.get('wk_cma')
         # taps = torch.zeros(8,8,151, dtype=torch.complex64)
@@ -950,12 +1020,20 @@ class MSEflex_NxN(torch.nn.Module):
             device=device,
             mode=mode,
         )
-        taps_ma = torch.zeros(self.num_channels,self.num_channels,self.N_phi_ave,dtype=torch.complex64, device=device)
+        taps_ma = torch.zeros(
+            self.num_channels,
+            self.num_channels,
+            self.N_phi_ave,
+            dtype=torch.complex64,
+            device=device,
+        )
         for ma_idx in range(self.num_channels):
-            taps_ma[ma_idx,ma_idx,:] = torch.ones(self.N_phi_ave,dtype=torch.complex64, device=device)
+            taps_ma[ma_idx, ma_idx, :] = torch.ones(
+                self.N_phi_ave, dtype=torch.complex64, device=device
+            )
         self.moving_ave = ButterflyNxN(
             taps=taps_ma,
-            #num_taps=num_taps,
+            # num_taps=num_taps,
             num_channels=num_channels,
             trainable=False,
             timedomain=True,
@@ -975,9 +1053,11 @@ class MSEflex_NxN(torch.nn.Module):
 
         if use_cpe == True:
             if cpe_window_length is None or angles_per_quadrant is None:
-                raise ValueError("Please provide cpe_window_length and angles_per_quadrant when using CPE.")
+                raise ValueError(
+                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                )
             else:
-                #cpe_window_length = 50
+                # cpe_window_length = 50
                 self.cpe = BPS(
                     self.angles_per_quadrant,
                     demapper.constellation,
@@ -985,7 +1065,7 @@ class MSEflex_NxN(torch.nn.Module):
                     diff=False,
                     temperature_per_epoch=1e-3,
                     no_sectors=4,
-                    avg_filter_type="tri", #"rect",
+                    avg_filter_type="tri",  # "rect",
                     trainable=False,
                 )
         # self.cpe = vandv.ViterbiViterbi(
@@ -1011,7 +1091,9 @@ class MSEflex_NxN(torch.nn.Module):
         # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
-        assert self.N_phi_ave < self.butterfly_forward.num_taps     # TODO: implement for both cases
+        assert (
+            self.N_phi_ave < self.butterfly_forward.num_taps
+        )  # TODO: implement for both cases
 
         num_samps = y.shape[1]
         # samples_per_step = self.butterfly_forward.num_taps + self.block_size
@@ -1024,14 +1106,22 @@ class MSEflex_NxN(torch.nn.Module):
         # We will process sps * block_size - 2 * num_taps because we will cut out the first and last block
 
         ref_up = torch.zeros_like(y)
-        ref_up[:,::self.sps] = x[:,:y.shape[-1]//self.sps]
+        ref_up[:, :: self.sps] = x[:, : y.shape[-1] // self.sps]
 
-        mod_symb_per_step_2 = self.symb_per_step%2
+        mod_symb_per_step_2 = self.symb_per_step % 2
         index_padding = (self.butterfly_forward.num_taps - 1) // 2
-        temp_eqIn = torch.zeros(self.N_phi_ave, y.shape[0], self.sps * self.block_size + 2*index_padding, dtype=y.dtype, device=y.device)     # shift register with dim: N_phi_ave, num. of channels, block_size*sps
+        temp_eqIn = torch.zeros(
+            self.N_phi_ave,
+            y.shape[0],
+            self.sps * self.block_size + 2 * index_padding,
+            dtype=y.dtype,
+            device=y.device,
+        )  # shift register with dim: N_phi_ave, num. of channels, block_size*sps
         # temp_phi = torch.zeros(self.N_phi_ave, dtype=y.dtype, device=y.device)
-        temp_ref = torch.zeros(self.N_phi_ave, y.shape[0], self.block_size, dtype=y.dtype, device=y.device)
-        
+        temp_ref = torch.zeros(
+            self.N_phi_ave, y.shape[0], self.block_size, dtype=y.dtype, device=y.device
+        )
+
         y_pad = self.pad_func(y)
         ref_pad = self.pad_func(x)
         # # init ref matrix
@@ -1055,26 +1145,40 @@ class MSEflex_NxN(torch.nn.Module):
             # self.update_lr(self.lr * 0.5)
             # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
-                k, # - index_padding,   # padding already included in y_pad
-                k + self.sps * self.block_size + 2*index_padding,   # times two since padding already included in y_pad
+                k,  # - index_padding,   # padding already included in y_pad
+                k
+                + self.sps * self.block_size
+                + 2
+                * index_padding,  # times two since padding already included in y_pad
             )
             ref_index = torch.arange(
-                i * self.symb_per_step + (index_padding+1)//2 + index_padding,  
-                i * self.symb_per_step + (index_padding+1)//2 + index_padding + self.block_size,   
+                i * self.symb_per_step + (index_padding + 1) // 2 + index_padding,
+                i * self.symb_per_step
+                + (index_padding + 1) // 2
+                + index_padding
+                + self.block_size,
             )
 
-            for jj in range(0,self.N_phi_ave//2):
-                temp_eqIn[self.N_phi_ave//2 - jj-1,:,:] = y_pad[:, self.sps*jj+1+in_index]  # later in time
-                temp_eqIn[self.N_phi_ave//2 + jj,:,:] = y_pad[:, in_index - self.sps*jj]  # earlier in time
-                temp_ref[self.N_phi_ave//2 - jj-1,:,:] = ref_pad[:, jj+1+ref_index]  # later in time
-                temp_ref[self.N_phi_ave//2 + jj,:, :] = ref_pad[:, ref_index - jj] # earlier in time
+            for jj in range(0, self.N_phi_ave // 2):
+                temp_eqIn[self.N_phi_ave // 2 - jj - 1, :, :] = y_pad[
+                    :, self.sps * jj + 1 + in_index
+                ]  # later in time
+                temp_eqIn[self.N_phi_ave // 2 + jj, :, :] = y_pad[
+                    :, in_index - self.sps * jj
+                ]  # earlier in time
+                temp_ref[self.N_phi_ave // 2 - jj - 1, :, :] = ref_pad[
+                    :, jj + 1 + ref_index
+                ]  # later in time
+                temp_ref[self.N_phi_ave // 2 + jj, :, :] = ref_pad[
+                    :, ref_index - jj
+                ]  # earlier in time
 
             # Equalization will give sps * block_size samples (because we add (num_taps - 1) in the beginning)
-            y_hat = self.butterfly_forward(temp_eqIn)[ : , : , 0 :: self.sps ]
+            y_hat = self.butterfly_forward(temp_eqIn)[:, :, 0 :: self.sps]
 
             # We downsample so we will have floor(((sps * block_size - num_taps + 1) / sps) = floor(block_size - (num_taps - 1)/sps)
             y_symb = y_hat[
-                self.N_phi_ave//2, :, :  #0 :: self.sps
+                self.N_phi_ave // 2, :, :  # 0 :: self.sps
             ].squeeze()  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
 
             if self.IQ_separate == True:
@@ -1116,26 +1220,32 @@ class MSEflex_NxN(torch.nn.Module):
             # temp_symb = temp_symb.roll(shifts=(1), dims=(0))
             # #ref_index = in_index[ (self.butterfly_forward.num_taps - 1) : ] + (self.butterfly_forward.num_taps + 1)*self.sps + 86
             # temp_ref = ref_up[:,y_index]
-            # temp_symb[0,:,:] = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again 
-            # ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again 
-            ref = temp_ref[self.N_phi_ave//2, :, :]
-            
+            # temp_symb[0,:,:] = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again
+            # ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again
+            ref = temp_ref[self.N_phi_ave // 2, :, :]
+
             if self.use_cpe == True:
                 # N_phi_ave = self.N_phi_ave
-                phi_off = (torch.angle(y_hat) - torch.angle(temp_ref)).detach() # unwrap necessary?
+                phi_off = (
+                    torch.angle(y_hat) - torch.angle(temp_ref)
+                ).detach()  # unwrap necessary?
                 # y_phi_sum = torch.zeros_like(y_symb)[:,:-N_phi_ave]
                 # self.moving_ave(torch.exp(1j*phi_off[16,:,:]))
                 # for ii in range(N_phi_ave):
                 #     y_phi_sum += torch.exp(1j*phi_off[:,ii:-(N_phi_ave-ii)])    # sum in the complex domain
-                phi_ma = torch.angle(torch.sum(torch.exp(1j*phi_off) , dim=0) )
-                ref_loss = ref *torch.exp(1j*phi_ma) 
-                loss = self.loss_func( y_symb.real, ref_loss.real ) + self.loss_func( y_symb.imag, ref_loss.imag)
+                phi_ma = torch.angle(torch.sum(torch.exp(1j * phi_off), dim=0))
+                ref_loss = ref * torch.exp(1j * phi_ma)
+                loss = self.loss_func(y_symb.real, ref_loss.real) + self.loss_func(
+                    y_symb.imag, ref_loss.imag
+                )
                 # for cc in range(self.num_channels):
                 #     ref[cc,:] *= torch.exp(1j*self.cpe(y_symb[cc,:])[1])    # rotate reference to make update independet of phase noise
                 # loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
                 phi_plot.append(phi_ma)
             else:
-                loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
+                loss = self.loss_func(y_symb.real, ref.real) + self.loss_func(
+                    y_symb.imag, ref.imag
+                )
 
             # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
@@ -1145,11 +1255,17 @@ class MSEflex_NxN(torch.nn.Module):
             # self.optimizer_var.zero_grad()
 
             # what about odd symbols_per_step?
-            if i==0:
-                ind_out = torch.arange( 0, (self.block_size+self.symb_per_step)//2 ) 
+            if i == 0:
+                ind_out = torch.arange(0, (self.block_size + self.symb_per_step) // 2)
             else:
-                ind_out = torch.arange( (self.block_size-self.symb_per_step)//2, (self.block_size+self.symb_per_step)//2 ) + mod_symb_per_step_2
-            
+                ind_out = (
+                    torch.arange(
+                        (self.block_size - self.symb_per_step) // 2,
+                        (self.block_size + self.symb_per_step) // 2,
+                    )
+                    + mod_symb_per_step_2
+                )
+
             output_symbols = y_symb[
                 :, ind_out
             ]  # - self.butterfly_forward.num_taps // 2]
@@ -1167,11 +1283,23 @@ class MSEflex_NxN(torch.nn.Module):
         ###################
 
         out_const = torch.cat(out, axis=1).detach().clone()
-        out_const *= (torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
+        out_const *= (
+            (
+                torch.sqrt(
+                    torch.sum(
+                        self.demapper.p_symbols
+                        * torch.abs(self.demapper.constellation) ** 2
+                    )
+                )
+                / torch.sqrt(torch.mean(torch.abs(out_const) ** 2, dim=-1))
+            )
+            .unsqueeze(1)
+            .repeat(1, out_const.shape[-1])
+        )
 
         if self.use_cpe == True:
             for cc in range(self.num_channels):
-                out_const[cc,:] = self.cpe(out_const[cc,:])[0]
+                out_const[cc, :] = self.cpe(out_const[cc, :])[0]
             if self.IQ_separate == True:
                 num_level = self.demapper.constellation.shape[-1]
                 q_hat = torch.zeros(
@@ -1207,8 +1335,8 @@ class MSEflex_NxN(torch.nn.Module):
         # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
 
         if self.requires_q == True:
-            eq_out = namedtuple("eq_out", ["y", "q", "loss"]) #, "phi_ref"])
-            return eq_out(out_const, q_hat, loss) #, torch.cat(phi_plot, axis=1))
+            eq_out = namedtuple("eq_out", ["y", "q", "loss"])  # , "phi_ref"])
+            return eq_out(out_const, q_hat, loss)  # , torch.cat(phi_plot, axis=1))
         return out_const
 
     def update_lr(self, new_lr):
@@ -1219,8 +1347,9 @@ class MSEflex_NxN(torch.nn.Module):
 
 ##############################################################################################
 ##############################################################################################
- ##############################################################################################
 ##############################################################################################
+##############################################################################################
+
 
 class MSEflex_phiMA_NxN(torch.nn.Module):
     """
@@ -1234,7 +1363,7 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
         demapper,
         sps,
         block_size=200,
-        symb_per_step = 10,
+        symb_per_step=10,
         lr=0.5e-2,
         requires_q=False,
         IQ_separate=False,
@@ -1255,9 +1384,9 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.register_buffer("use_cpe", torch.as_tensor(use_cpe))
 
-        self.register_buffer("N_phi_ave", torch.as_tensor(20))      # 50 at code of IPQ
+        self.register_buffer("N_phi_ave", torch.as_tensor(20))  # 50 at code of IPQ
         self.mode = mode
-        
+
         # f = scipy.io.loadmat("waveforms/data_from_IPQ/weights.mat")
         # weigh = f.get('wk_cma')
         # taps = torch.zeros(8,8,151, dtype=torch.complex64)
@@ -1319,7 +1448,9 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
         # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
-        assert self.N_phi_ave < self.butterfly_forward.num_taps     # TODO: implement for both cases
+        assert (
+            self.N_phi_ave < self.butterfly_forward.num_taps
+        )  # TODO: implement for both cases
 
         num_samps = y.shape[1]
         # samples_per_step = self.butterfly_forward.num_taps + self.block_size
@@ -1332,13 +1463,21 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
         # We will process sps * block_size - 2 * num_taps because we will cut out the first and last block
 
         ref_up = torch.zeros_like(y)
-        ref_up[:,::self.sps] = x[:,:y.shape[-1]//self.sps]
+        ref_up[:, :: self.sps] = x[:, : y.shape[-1] // self.sps]
 
-        mod_symb_per_step_2 = self.symb_per_step%2
+        mod_symb_per_step_2 = self.symb_per_step % 2
         index_padding = (self.butterfly_forward.num_taps - 1) // 2
-        temp_eqIn = torch.zeros(self.N_phi_ave, y.shape[0], self.sps * self.block_size + 2*index_padding, dtype=y.dtype, device=y.device)     # shift register with dim: N_phi_ave, num. of channels, block_size*sps
-        temp_ref = torch.zeros(self.N_phi_ave, y.shape[0], self.block_size, dtype=y.dtype, device=y.device)
-        
+        temp_eqIn = torch.zeros(
+            self.N_phi_ave,
+            y.shape[0],
+            self.sps * self.block_size + 2 * index_padding,
+            dtype=y.dtype,
+            device=y.device,
+        )  # shift register with dim: N_phi_ave, num. of channels, block_size*sps
+        temp_ref = torch.zeros(
+            self.N_phi_ave, y.shape[0], self.block_size, dtype=y.dtype, device=y.device
+        )
+
         y_pad = self.pad_func(y)
         ref_pad = self.pad_func(x)
 
@@ -1353,26 +1492,40 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
             )
         ):
             in_index = torch.arange(
-                k, # - index_padding,   # padding already included in y_pad
-                k + self.sps * self.block_size + 2*index_padding,   # times two since padding already included in y_pad
+                k,  # - index_padding,   # padding already included in y_pad
+                k
+                + self.sps * self.block_size
+                + 2
+                * index_padding,  # times two since padding already included in y_pad
             )
             ref_index = torch.arange(
-                i * self.symb_per_step + (index_padding+1)//2 + index_padding,  
-                i * self.symb_per_step + (index_padding+1)//2 + index_padding + self.block_size,   
+                i * self.symb_per_step + (index_padding + 1) // 2 + index_padding,
+                i * self.symb_per_step
+                + (index_padding + 1) // 2
+                + index_padding
+                + self.block_size,
             )
 
-            for jj in range(0,self.N_phi_ave//2):
-                temp_eqIn[self.N_phi_ave//2 - jj-1,:,:] = y_pad[:, self.sps*jj+1+in_index]  # later in time
-                temp_eqIn[self.N_phi_ave//2 + jj,:,:] = y_pad[:, in_index - self.sps*jj]  # earlier in time
-                temp_ref[self.N_phi_ave//2 - jj-1,:,:] = ref_pad[:, jj+1+ref_index]  # later in time
-                temp_ref[self.N_phi_ave//2 + jj,:, :] = ref_pad[:, ref_index - jj] # earlier in time
+            for jj in range(0, self.N_phi_ave // 2):
+                temp_eqIn[self.N_phi_ave // 2 - jj - 1, :, :] = y_pad[
+                    :, self.sps * jj + 1 + in_index
+                ]  # later in time
+                temp_eqIn[self.N_phi_ave // 2 + jj, :, :] = y_pad[
+                    :, in_index - self.sps * jj
+                ]  # earlier in time
+                temp_ref[self.N_phi_ave // 2 - jj - 1, :, :] = ref_pad[
+                    :, jj + 1 + ref_index
+                ]  # later in time
+                temp_ref[self.N_phi_ave // 2 + jj, :, :] = ref_pad[
+                    :, ref_index - jj
+                ]  # earlier in time
 
             # Equalization will give sps * block_size samples (because we add (num_taps - 1) in the beginning)
-            y_hat = self.butterfly_forward(temp_eqIn)[ : , : , 0 :: self.sps ]
+            y_hat = self.butterfly_forward(temp_eqIn)[:, :, 0 :: self.sps]
 
             # We downsample so we will have floor(((sps * block_size - num_taps + 1) / sps) = floor(block_size - (num_taps - 1)/sps)
             y_symb = y_hat[
-                self.N_phi_ave//2, :, :  #0 :: self.sps
+                self.N_phi_ave // 2, :, :  # 0 :: self.sps
             ].squeeze()  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
 
             if self.IQ_separate == True:
@@ -1404,15 +1557,21 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
                         y_symb[out_chan, :]
                     ).unsqueeze(0)
 
-            ref = temp_ref[self.N_phi_ave//2, :, :]
+            ref = temp_ref[self.N_phi_ave // 2, :, :]
             if self.use_cpe == True:
-                phi_off = (torch.angle(y_hat) - torch.angle(temp_ref)).detach() # unwrap necessary?
-                phi_ma = torch.angle(torch.sum(torch.exp(1j*phi_off) , dim=0) )
-                ref_loss = ref *torch.exp(1j*phi_ma) 
-                loss = self.loss_func( y_symb.real, ref_loss.real ) + self.loss_func( y_symb.imag, ref_loss.imag)
+                phi_off = (
+                    torch.angle(y_hat) - torch.angle(temp_ref)
+                ).detach()  # unwrap necessary?
+                phi_ma = torch.angle(torch.sum(torch.exp(1j * phi_off), dim=0))
+                ref_loss = ref * torch.exp(1j * phi_ma)
+                loss = self.loss_func(y_symb.real, ref_loss.real) + self.loss_func(
+                    y_symb.imag, ref_loss.imag
+                )
                 phi_plot.append(phi_ma)
             else:
-                loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
+                loss = self.loss_func(y_symb.real, ref.real) + self.loss_func(
+                    y_symb.imag, ref.imag
+                )
 
             # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
@@ -1422,11 +1581,17 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
             # self.optimizer_var.zero_grad()
 
             # what about odd symbols_per_step?
-            if i==0:
-                ind_out = torch.arange( 0, (self.block_size+self.symb_per_step)//2 ) 
+            if i == 0:
+                ind_out = torch.arange(0, (self.block_size + self.symb_per_step) // 2)
             else:
-                ind_out = torch.arange( (self.block_size-self.symb_per_step)//2, (self.block_size+self.symb_per_step)//2 ) + mod_symb_per_step_2
-            
+                ind_out = (
+                    torch.arange(
+                        (self.block_size - self.symb_per_step) // 2,
+                        (self.block_size + self.symb_per_step) // 2,
+                    )
+                    + mod_symb_per_step_2
+                )
+
             output_symbols = y_symb[
                 :, ind_out
             ]  # - self.butterfly_forward.num_taps // 2]
@@ -1444,11 +1609,23 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
         ###################
 
         out_const = torch.cat(out, axis=1).detach().clone()
-        out_const *= (torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
+        out_const *= (
+            (
+                torch.sqrt(
+                    torch.sum(
+                        self.demapper.p_symbols
+                        * torch.abs(self.demapper.constellation) ** 2
+                    )
+                )
+                / torch.sqrt(torch.mean(torch.abs(out_const) ** 2, dim=-1))
+            )
+            .unsqueeze(1)
+            .repeat(1, out_const.shape[-1])
+        )
 
         if self.use_cpe == True:
             for cc in range(self.num_channels):
-                out_const[cc,:] = self.cpe(out_const[cc,:])[0]
+                out_const[cc, :] = self.cpe(out_const[cc, :])[0]
             if self.IQ_separate == True:
                 num_level = self.demapper.constellation.shape[-1]
                 q_hat = torch.zeros(
@@ -1484,8 +1661,8 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
         # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
 
         if self.requires_q == True:
-            eq_out = namedtuple("eq_out", ["y", "q", "loss"]) #, "phi_ref"])
-            return eq_out(out_const, q_hat, loss) #, torch.cat(phi_plot, axis=1))
+            eq_out = namedtuple("eq_out", ["y", "q", "loss"])  # , "phi_ref"])
+            return eq_out(out_const, q_hat, loss)  # , torch.cat(phi_plot, axis=1))
         return out_const
 
     def update_lr(self, new_lr):
@@ -1496,7 +1673,7 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
 
 ##############################################################################################
 ##############################################################################################
- ##############################################################################################
+##############################################################################################
 ##############################################################################################
 
 
@@ -1512,7 +1689,7 @@ class LMS_NxN(torch.nn.Module):
         demapper,
         sps,
         block_size=200,
-        symb_per_step = 10,
+        symb_per_step=10,
         lr=0.5e-2,
         requires_q=False,
         IQ_separate=False,
@@ -1535,13 +1712,17 @@ class LMS_NxN(torch.nn.Module):
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.register_buffer("use_cpe", torch.as_tensor(use_cpe))
         if cpe_window_length != None:
-            self.register_buffer("cpe_window_length", torch.as_tensor(cpe_window_length))
+            self.register_buffer(
+                "cpe_window_length", torch.as_tensor(cpe_window_length)
+            )
         if angles_per_quadrant != None:
-            self.register_buffer("angles_per_quadrant", torch.as_tensor(angles_per_quadrant))
+            self.register_buffer(
+                "angles_per_quadrant", torch.as_tensor(angles_per_quadrant)
+            )
 
-        self.register_buffer("N_phi_ave", torch.as_tensor(32))      # 50 at code of IPQ
+        self.register_buffer("N_phi_ave", torch.as_tensor(32))  # 50 at code of IPQ
         self.mode = mode
-        
+
         # f = scipy.io.loadmat("waveforms/data_from_IPQ/weights.mat")
         # weigh = f.get('wk_cma')
         # taps = torch.zeros(8,8,151, dtype=torch.complex64)
@@ -1562,9 +1743,11 @@ class LMS_NxN(torch.nn.Module):
 
         if use_cpe == True:
             if cpe_window_length is None or angles_per_quadrant is None:
-                raise ValueError("Please provide cpe_window_length and angles_per_quadrant when using CPE.")
+                raise ValueError(
+                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                )
             else:
-                #cpe_window_length = 50
+                # cpe_window_length = 50
                 self.cpe = BPS(
                     self.angles_per_quadrant,
                     demapper.constellation,
@@ -1594,7 +1777,9 @@ class LMS_NxN(torch.nn.Module):
         # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
-        assert self.N_phi_ave < self.butterfly_forward.num_taps     # TODO: implement for both cases
+        assert (
+            self.N_phi_ave < self.butterfly_forward.num_taps
+        )  # TODO: implement for both cases
 
         num_samps = y.shape[1]
         # samples_per_step = self.butterfly_forward.num_taps + self.block_size
@@ -1606,14 +1791,26 @@ class LMS_NxN(torch.nn.Module):
         # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
         # We will process sps * block_size - 2 * num_taps because we will cut out the first and last block
 
-        mod_symb_per_step_2 = self.symb_per_step%2
+        mod_symb_per_step_2 = self.symb_per_step % 2
         index_padding = (self.butterfly_forward.num_taps - 1) // 2
-        temp_eqIn = torch.zeros(self.N_phi_ave, y.shape[0], self.butterfly_forward.num_taps, dtype=y.dtype, device=y.device)     # shift register with dim: N_phi_ave, num. of channels, block_size*sps
+        temp_eqIn = torch.zeros(
+            self.N_phi_ave,
+            y.shape[0],
+            self.butterfly_forward.num_taps,
+            dtype=y.dtype,
+            device=y.device,
+        )  # shift register with dim: N_phi_ave, num. of channels, block_size*sps
         # temp_phi = torch.zeros(self.N_phi_ave, dtype=y.dtype, device=y.device)
-        temp_ref = torch.zeros(self.N_phi_ave, y.shape[0], 1, dtype=y.dtype, device=y.device)
-        
-        num_out_samps = (num_samps - 2*index_padding - self.butterfly_forward.num_taps)//self.sps +1
-        y_hat_out = torch.zeros(y.shape[0], num_out_samps, dtype=y.dtype, device=y.device)
+        temp_ref = torch.zeros(
+            self.N_phi_ave, y.shape[0], 1, dtype=y.dtype, device=y.device
+        )
+
+        num_out_samps = (
+            num_samps - 2 * index_padding - self.butterfly_forward.num_taps
+        ) // self.sps + 1
+        y_hat_out = torch.zeros(
+            y.shape[0], num_out_samps, dtype=y.dtype, device=y.device
+        )
         err_out = torch.zeros(y.shape[0], num_out_samps, dtype=y.dtype, device=y.device)
 
         y_pad = self.pad_func(y)
@@ -1638,50 +1835,77 @@ class LMS_NxN(torch.nn.Module):
             # self.update_lr(self.lr * 0.5)
             # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
-                k, # - index_padding,   # padding already included in y_pad
-                k + self.butterfly_forward.num_taps   # times two since padding already included in y_pad
+                k,  # - index_padding,   # padding already included in y_pad
+                k
+                + self.butterfly_forward.num_taps,  # times two since padding already included in y_pad
             )
             ref_index = torch.arange(
-                i + (index_padding+1)//2 + index_padding  - self.N_phi_ave//2,
-                i + (index_padding+1)//2 + index_padding  + self.N_phi_ave//2
+                i + (index_padding + 1) // 2 + index_padding - self.N_phi_ave // 2,
+                i + (index_padding + 1) // 2 + index_padding + self.N_phi_ave // 2,
             )
 
-            temp_ref = (ref_pad[:,ref_index].permute(1,0)).to(y.dtype)#.unsqueeze(-1)
+            temp_ref = (ref_pad[:, ref_index].permute(1, 0)).to(
+                y.dtype
+            )  # .unsqueeze(-1)
 
-
-            for jj in range(0,self.N_phi_ave//2):
-                temp_eqIn[self.N_phi_ave//2 - jj-1,:,:] = y_pad[:, self.sps*jj+1+in_index]  # later in time
-                temp_eqIn[self.N_phi_ave//2 + jj,:,:] = y_pad[:, in_index - self.sps*jj]  # earlier in time
-                #temp_ref[self.N_phi_ave//2 - jj-1,:,:] = ref_pad[:, jj+1+ref_index]  # later in time
-                #temp_ref[self.N_phi_ave//2 + jj,:, :] = ref_pad[:, ref_index - jj] # earlier in time
+            for jj in range(0, self.N_phi_ave // 2):
+                temp_eqIn[self.N_phi_ave // 2 - jj - 1, :, :] = y_pad[
+                    :, self.sps * jj + 1 + in_index
+                ]  # later in time
+                temp_eqIn[self.N_phi_ave // 2 + jj, :, :] = y_pad[
+                    :, in_index - self.sps * jj
+                ]  # earlier in time
+                # temp_ref[self.N_phi_ave//2 - jj-1,:,:] = ref_pad[:, jj+1+ref_index]  # later in time
+                # temp_ref[self.N_phi_ave//2 + jj,:, :] = ref_pad[:, ref_index - jj] # earlier in time
 
             # Equalization will give sps * block_size samples (because we add (num_taps - 1) in the beginning)
             y_hat = self.butterfly_forward(temp_eqIn)
 
             # We downsample so we will have floor(((sps * block_size - num_taps + 1) / sps) = floor(block_size - (num_taps - 1)/sps)
             y_symb = y_hat[
-                self.N_phi_ave//2, : #0 :: self.sps
+                self.N_phi_ave // 2, :  # 0 :: self.sps
             ].squeeze()  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
-            ref = temp_ref[self.N_phi_ave//2, :].squeeze()
-            
+            ref = temp_ref[self.N_phi_ave // 2, :].squeeze()
+
             with torch.set_grad_enabled(False):
-                #N_phi_ave = self.N_phi_ave
-                phi_off = (torch.angle(y_hat) - torch.angle(temp_ref)).detach() # unwrap necessary?
-                #y_phi_sum = torch.zeros_like(y_symb)[:,:-N_phi_ave]
+                # N_phi_ave = self.N_phi_ave
+                phi_off = (
+                    torch.angle(y_hat) - torch.angle(temp_ref)
+                ).detach()  # unwrap necessary?
+                # y_phi_sum = torch.zeros_like(y_symb)[:,:-N_phi_ave]
                 # for ii in range(N_phi_ave):
                 #     y_phi_sum += torch.exp(1j*phi_off[:,ii:-(N_phi_ave-ii)])    # sum in the complex domain
-                phi_ma = torch.angle(torch.sum(torch.exp(1j*phi_off) , dim=0) )
-                y_hat_out[:,i] = y_symb*torch.exp(-1j*phi_ma) 
-                err_out[:,i] = (ref - y_hat_out[:,i])*torch.exp(1j*phi_ma) # should be num_channels x 1
+                phi_ma = torch.angle(torch.sum(torch.exp(1j * phi_off), dim=0))
+                y_hat_out[:, i] = y_symb * torch.exp(-1j * phi_ma)
+                err_out[:, i] = (ref - y_hat_out[:, i]) * torch.exp(
+                    1j * phi_ma
+                )  # should be num_channels x 1
                 for in_ch in range(y.shape[0]):
-                    self.butterfly_forward.taps[:,in_ch,:] += (2*self.lr * err_out[:,i].unsqueeze(1)  * temp_eqIn[self.N_phi_ave//2,in_ch,:])
+                    self.butterfly_forward.taps[:, in_ch, :] += (
+                        2
+                        * self.lr
+                        * err_out[:, i].unsqueeze(1)
+                        * temp_eqIn[self.N_phi_ave // 2, in_ch, :]
+                    )
 
         out_const = y_hat_out.detach().clone()
-        out_const *= (torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
+        out_const *= (
+            (
+                torch.sqrt(
+                    torch.sum(
+                        self.demapper.p_symbols
+                        * torch.abs(self.demapper.constellation) ** 2
+                    )
+                )
+                / torch.sqrt(torch.mean(torch.abs(out_const) ** 2, dim=-1))
+            )
+            .unsqueeze(1)
+            .repeat(1, out_const.shape[-1])
+        )
 
         if self.use_cpe == True:
             for cc in range(self.num_channels):
-                out_const[cc,:] = self.cpe(out_const[cc,:])[0]
+                out_const[cc, :] = self.cpe(out_const[cc, :])[0]
         if self.IQ_separate == True:
             num_level = self.demapper.constellation.shape[-1]
             q_hat = torch.zeros(
@@ -1707,16 +1931,16 @@ class LMS_NxN(torch.nn.Module):
                 dtype=torch.float32,
             )
             for out_chan in range(out_const.shape[0]):
-                q_hat[out_chan, :, :] = self.demapper(
-                    out_const[out_chan, :]
-                ).unsqueeze(0)
+                q_hat[out_chan, :, :] = self.demapper(out_const[out_chan, :]).unsqueeze(
+                    0
+                )
 
         # print("loss: ", loss, "\t\t\t var: ", var)
         # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
 
         if self.requires_q == True:
-            eq_out = namedtuple("eq_out", ["y", "q", "loss"]) #, "phi_ref"])
-            return eq_out(out_const, q_hat, err_out) #, torch.cat(phi_plot, axis=1))
+            eq_out = namedtuple("eq_out", ["y", "q", "loss"])  # , "phi_ref"])
+            return eq_out(out_const, q_hat, err_out)  # , torch.cat(phi_plot, axis=1))
         return out_const
 
     def update_lr(self, new_lr):
@@ -1912,7 +2136,7 @@ def ELBO_NxN(
     else:
         E_Q_x[:, ::sps] = torch.sum(
             q * constellation_symbols.unsqueeze(0).unsqueeze(0), axis=-1
-        ) * torch.exp(-1j*phi)
+        ) * torch.exp(-1j * phi)
         E_Q_x_abssq[:, ::sps] = torch.sum(
             q
             * (constellation_symbols.real**2 + constellation_symbols.imag**2)
@@ -1947,7 +2171,7 @@ def ELBO_NxN(
         h_conv_E_Q_x.real**2
         + h_conv_E_Q_x.imag**2
         + butterfly_filter.forward_abssquared(
-            (E_Q_x_abssq - torch.abs(E_Q_x) ** 2)#.to(torch.float32)
+            (E_Q_x_abssq - torch.abs(E_Q_x) ** 2)  # .to(torch.float32)
         ),
         axis=1,
     )
@@ -2449,7 +2673,7 @@ class VAE_LE_DP_IQ(torch.nn.Module):
                 self.sps,
                 self.demapper.constellation,
                 self.h_est,
-                p_amps=self.demapper.p_symbols
+                p_amps=self.demapper.p_symbols,
                 # p_constellation=self.demapper.p_symbols
             )
 
@@ -2524,6 +2748,7 @@ def update_adaptive(y_hat_sym, pilot_seq, regression_seq, idx, length, sps):
     result = e_k * torch.flip(regression_seq.conj().resolve_conj(), dims=(0,))
     return result, e_k
 
+
 ##############################################################################################
 ##############################################################################################
 
@@ -2536,9 +2761,9 @@ class VAE_LE_NxN(torch.nn.Module):
     def __init__(
         self,
         num_channels=None,
-        taps_EQ = None,
+        taps_EQ=None,
         num_taps_EQ=None,
-        taps_EST = None,
+        taps_EST=None,
         num_taps_EST=None,
         demapper=None,
         sps=2,
@@ -2575,29 +2800,45 @@ class VAE_LE_NxN(torch.nn.Module):
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.register_buffer("var_from_estimate", torch.as_tensor(var_from_estimate))
         self.register_buffer("use_cpe", torch.as_tensor(use_cpe))
-        self.register_buffer("use_cpe_in_training", torch.as_tensor(use_cpe_in_training))
+        self.register_buffer(
+            "use_cpe_in_training", torch.as_tensor(use_cpe_in_training)
+        )
         self.register_buffer("use_corr_avoid", torch.as_tensor(use_corr_avoid))
-        self.avg_filter_type=avg_filter_type
+        self.avg_filter_type = avg_filter_type
         self.register_buffer("alpha_corr", torch.as_tensor(alpha_corr))
         self.register_buffer("corr_window", torch.as_tensor(corr_window))
         if cpe_window_length != None:
             if cpe_train_window_length != None:
-                self.register_buffer("cpe_window_length", torch.as_tensor(cpe_window_length))
-                self.register_buffer("cpe_train_window_length", torch.as_tensor(cpe_train_window_length))
+                self.register_buffer(
+                    "cpe_window_length", torch.as_tensor(cpe_window_length)
+                )
+                self.register_buffer(
+                    "cpe_train_window_length", torch.as_tensor(cpe_train_window_length)
+                )
             else:
-                self.register_buffer("cpe_window_length", torch.as_tensor(cpe_window_length))
-                self.register_buffer("cpe_train_window_length", torch.as_tensor(cpe_window_length))
+                self.register_buffer(
+                    "cpe_window_length", torch.as_tensor(cpe_window_length)
+                )
+                self.register_buffer(
+                    "cpe_train_window_length", torch.as_tensor(cpe_window_length)
+                )
         if temperature_per_epoch != None:
-            self.register_buffer("temperature_per_epoch", torch.as_tensor(temperature_per_epoch))
+            self.register_buffer(
+                "temperature_per_epoch", torch.as_tensor(temperature_per_epoch)
+            )
         else:
             self.register_buffer("temperature_per_epoch", torch.as_tensor(1e-2))
         if angles_per_quadrant != None:
-            self.register_buffer("angles_per_quadrant", torch.as_tensor(angles_per_quadrant))
+            self.register_buffer(
+                "angles_per_quadrant", torch.as_tensor(angles_per_quadrant)
+            )
         self.mode = mode
         ########## Equalizer ############
         if taps_EQ is None:
             if num_taps_EQ is None:
-                raise ValueError("Please provide either a valid num_taps_EQ or taps_EQ.")
+                raise ValueError(
+                    "Please provide either a valid num_taps_EQ or taps_EQ."
+                )
             else:
                 self.butterfly_forward = ButterflyNxN(
                     num_taps=num_taps_EQ,
@@ -2619,7 +2860,9 @@ class VAE_LE_NxN(torch.nn.Module):
         ########## Estimator ############
         if taps_EST is None:
             if num_taps_EST is None:
-                raise ValueError("Please provide either a valid num_taps_EST or taps_EST.")
+                raise ValueError(
+                    "Please provide either a valid num_taps_EST or taps_EST."
+                )
             else:
                 self.butterfly_backward = ButterflyNxN(
                     num_taps=num_taps_EST,
@@ -2638,7 +2881,7 @@ class VAE_LE_NxN(torch.nn.Module):
                 mode=mode,
             )
         #######################
-    
+
         self.demapper = demapper
         self.optimizer = torch.optim.Adam(
             self.butterfly_forward.parameters(),
@@ -2653,7 +2896,9 @@ class VAE_LE_NxN(torch.nn.Module):
 
         if use_cpe == True:
             if cpe_window_length is None or angles_per_quadrant is None:
-                raise ValueError("Please provide cpe_window_length and angles_per_quadrant when using CPE.")
+                raise ValueError(
+                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                )
             else:
                 ##cpe_window_length = 50
                 self.cpe = BPS(
@@ -2661,17 +2906,19 @@ class VAE_LE_NxN(torch.nn.Module):
                     demapper.constellation.squeeze(),
                     self.cpe_window_length,
                     diff=False,
-                    temperature_per_epoch=self.temperature_per_epoch, #1e-3,
+                    temperature_per_epoch=self.temperature_per_epoch,  # 1e-3,
                     no_sectors=4,
                     PS_aware=False,
                     p_symbols=demapper.p_symbols.squeeze(),
                     noise_sigma=demapper.noise_sigma,
-                    avg_filter_type=self.avg_filter_type,  #"rect",
+                    avg_filter_type=self.avg_filter_type,  # "rect",
                     trainable=False,
                 )
         if use_cpe_in_training == True:
             if cpe_window_length is None or angles_per_quadrant is None:
-                raise ValueError("Please provide cpe_window_length and angles_per_quadrant when using CPE.")
+                raise ValueError(
+                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                )
             else:
                 self.cpe_in_loop = BPS(
                     self.angles_per_quadrant,
@@ -2683,7 +2930,7 @@ class VAE_LE_NxN(torch.nn.Module):
                     PS_aware=False,
                     p_symbols=demapper.p_symbols.squeeze(),
                     noise_sigma=demapper.noise_sigma,
-                    avg_filter_type=self.avg_filter_type, #"rect",  #"rect","tri"
+                    avg_filter_type=self.avg_filter_type,  # "rect",  #"rect","tri"
                     trainable=False,
                 )
                 # self.cpe = vandv.ViterbiViterbi(
@@ -2695,18 +2942,18 @@ class VAE_LE_NxN(torch.nn.Module):
 
     def init_cpe_for_train(self):
         self.cpe_in_loop = BPS(
-                    self.angles_per_quadrant,
-                    self.demapper.constellation.squeeze(),
-                    self.cpe_train_window_length,
-                    diff=True,
-                    temperature_per_epoch=self.temperature_per_epoch,
-                    no_sectors=4,
-                    PS_aware=False,
-                    p_symbols=self.demapper.p_symbols.squeeze(),
-                    noise_sigma=self.demapper.noise_sigma,
-                    avg_filter_type=self.avg_filter_type,  #"rect",
-                    trainable=False,
-                )
+            self.angles_per_quadrant,
+            self.demapper.constellation.squeeze(),
+            self.cpe_train_window_length,
+            diff=True,
+            temperature_per_epoch=self.temperature_per_epoch,
+            no_sectors=4,
+            PS_aware=False,
+            p_symbols=self.demapper.p_symbols.squeeze(),
+            noise_sigma=self.demapper.noise_sigma,
+            avg_filter_type=self.avg_filter_type,  # "rect",
+            trainable=False,
+        )
 
     def reset(self):
         self.lr = self.start_lr.clone()
@@ -2732,30 +2979,32 @@ class VAE_LE_NxN(torch.nn.Module):
         )
         self.optimizer.add_param_group({"params": self.butterfly_backward.parameters()})
 
-    def forward(self, y): #, x):
+    def forward(self, y):  # , x):
         # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
         num_samps = y.shape[1]
         # samples_per_step = self.butterfly_forward.num_taps + self.block_size
-##########################
+        ##########################
         # phi_ref_full = []
         # phi_full = []
         # ref_full = []
-##########################
+        ##########################
         out = []
         out_q = []
         var_out = []
         # We start our loop already at num_taps  (because we cannot equalize the start)
         # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
         # We will process sps * block_size - 2 * num_taps because we will cut out the first and last block
-##########################
+        ##########################
         # ref_up = torch.zeros_like(y)
         # ref_up[:,::self.sps] = x[:,:y.shape[-1]//self.sps]
-##########################
-        index_padding = (self.butterfly_forward.num_taps - 1) // 2 + self.cpe_window_length*self.sps
+        ##########################
+        index_padding = (
+            self.butterfly_forward.num_taps - 1
+        ) // 2 + self.cpe_window_length * self.sps
         phi_pre = torch.zeros(y.shape[0], device=y.device, dtype=torch.float32)
-        piHalfTensor = torch.tensor(torch.pi/2, device=y.device)
+        piHalfTensor = torch.tensor(torch.pi / 2, device=y.device)
         for i, k in enumerate(
             range(
                 index_padding,
@@ -2782,44 +3031,56 @@ class VAE_LE_NxN(torch.nn.Module):
                 :, 0 :: self.sps
             ]  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
 
-            y_symb = torch.empty_like(y_symb_temp)[:,self.cpe_window_length : -self.cpe_window_length ]  # y_symb_temp #
-            phi_loop = torch.zeros_like(y_symb).real #.to(torch.float32)
+            y_symb = torch.empty_like(y_symb_temp)[
+                :, self.cpe_window_length : -self.cpe_window_length
+            ]  # y_symb_temp #
+            phi_loop = torch.zeros_like(y_symb).real  # .to(torch.float32)
 
             # We calculate the loss with less symbols, since the forward operation with "valid"
             # is missing some symbols
             # We assume the symbol of interest is at the center tap of the filter
-            y_index = in_index[
-                index_padding : -index_padding
-            ]
-##########################
+            y_index = in_index[index_padding:-index_padding]
+            ##########################
             # temp_ref = ref_up[:,y_index]
-            # ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again 
+            # ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again
 
             # phi_ref = torch.angle(y_symb_temp[:, self.cpe_window_length : -self.cpe_window_length] * ref.conj())
-##########################
+            ##########################
             if self.use_cpe_in_training == True:
-                y_symb_temp1 =  y_symb_temp.clone()*(torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(y_symb_temp)**2, dim=-1))).unsqueeze(1).repeat(1,y_symb_temp.shape[-1])
+                y_symb_temp1 = y_symb_temp.clone() * (
+                    torch.sqrt(
+                        torch.sum(
+                            self.demapper.p_symbols
+                            * torch.abs(self.demapper.constellation) ** 2
+                        )
+                    )
+                    / torch.sqrt(torch.mean(torch.abs(y_symb_temp) ** 2, dim=-1))
+                ).unsqueeze(1).repeat(1, y_symb_temp.shape[-1])
                 for cc in range(self.num_channels):
-                    y_symb_temp2, phi_loop_temp2 = self.cpe_in_loop(y_symb_temp1[cc,:])  # [0]
-                    y_symb[cc,:] = y_symb_temp2[self.cpe_window_length : -self.cpe_window_length ].clone()
-                    phi_loop[cc,:] = phi_loop_temp2[self.cpe_window_length : -self.cpe_window_length ].clone()
+                    y_symb_temp2, phi_loop_temp2 = self.cpe_in_loop(
+                        y_symb_temp1[cc, :]
+                    )  # [0]
+                    y_symb[cc, :] = y_symb_temp2[
+                        self.cpe_window_length : -self.cpe_window_length
+                    ].clone()
+                    phi_loop[cc, :] = phi_loop_temp2[
+                        self.cpe_window_length : -self.cpe_window_length
+                    ].clone()
                     ## make sure that there are no phase slips between blocks
-                    diff_pre = (phi_pre[cc]-phi_loop[cc,0]) 
+                    diff_pre = phi_pre[cc] - phi_loop[cc, 0]
                     # if diff_pre > thresh_between_blocks:
                     #     phi_loop[cc,in_index] += torch.pi/2
                     # elif diff_pre < -thresh_between_blocks:
                     #     phi_loop[cc,in_index] -= torch.pi/2
-                    if torch.abs(diff_pre+piHalfTensor) < torch.abs(diff_pre):
-                        phi_loop[cc,:] -= piHalfTensor
-                        y_symb[cc,:] *=  torch.exp(-1j * piHalfTensor)
-                    elif torch.abs(diff_pre-piHalfTensor) < torch.abs(diff_pre):
-                        phi_loop[cc,:] += piHalfTensor
-                        y_symb[cc,:] *=  torch.exp(1j * piHalfTensor)
-                    phi_pre[cc] = phi_loop[cc,-1]
+                    if torch.abs(diff_pre + piHalfTensor) < torch.abs(diff_pre):
+                        phi_loop[cc, :] -= piHalfTensor
+                        y_symb[cc, :] *= torch.exp(-1j * piHalfTensor)
+                    elif torch.abs(diff_pre - piHalfTensor) < torch.abs(diff_pre):
+                        phi_loop[cc, :] += piHalfTensor
+                        y_symb[cc, :] *= torch.exp(1j * piHalfTensor)
+                    phi_pre[cc] = phi_loop[cc, -1]
             else:
                 y_symb = y_symb_temp
-
-            
 
             if self.IQ_separate == True:
                 num_level = self.demapper.constellation.shape[-1]
@@ -2850,7 +3111,6 @@ class VAE_LE_NxN(torch.nn.Module):
                         y_symb[out_chan, :]
                     ).unsqueeze(0)
 
-            
             loss, var = ELBO_NxN(
                 # loss, var = ELBO_DP(
                 y[:, y_index],
@@ -2864,17 +3124,27 @@ class VAE_LE_NxN(torch.nn.Module):
             )
 
             if self.use_corr_avoid == True:
-                #corr_loss = torch.zeros_like(loss)
-                for kk in range(y.shape[0]):             # calculate correlation of each channel to all others
+                # corr_loss = torch.zeros_like(loss)
+                for kk in range(
+                    y.shape[0]
+                ):  # calculate correlation of each channel to all others
                     ind_corr = torch.arange(y.shape[0])
-                    ind_corr = ind_corr[ind_corr!=kk]
-                    loss += self.alpha_corr*torch.sum(torch.abs(
-                        torch.conv1d(
-                            y_symb[kk,:].unsqueeze(0),
-                            y_symb[ind_corr,y_symb.shape[-1]-self.corr_window//2:y_symb.shape[-1]+self.corr_window//2].unsqueeze(1),
-                            padding='valid',
+                    ind_corr = ind_corr[ind_corr != kk]
+                    loss += self.alpha_corr * torch.sum(
+                        torch.abs(
+                            torch.conv1d(
+                                y_symb[kk, :].unsqueeze(0),
+                                y_symb[
+                                    ind_corr,
+                                    y_symb.shape[-1]
+                                    - self.corr_window // 2 : y_symb.shape[-1]
+                                    + self.corr_window // 2,
+                                ].unsqueeze(1),
+                                padding="valid",
+                            )
                         )
-                    )**2)
+                        ** 2
+                    )
 
             # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
@@ -2899,17 +3169,17 @@ class VAE_LE_NxN(torch.nn.Module):
             #     output_symbols
             # )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
             if self.use_cpe == False:
-                out.append(
-                    y_symb[:, : self.block_size] #_temp[:, : self.block_size]
-                ) 
+                out.append(y_symb[:, : self.block_size])  # _temp[:, : self.block_size]
             else:
                 out.append(
-                    y_symb_temp[:, self.cpe_window_length : self.block_size+self.cpe_window_length]
-                ) 
-            var_out.append(
-                var
-            )
-##########################
+                    y_symb_temp[
+                        :,
+                        self.cpe_window_length : self.block_size
+                        + self.cpe_window_length,
+                    ]
+                )
+            var_out.append(var)
+            ##########################
             # phi_full.append(
             #     phi_loop[:,:self.block_size]
             # )
@@ -2919,18 +3189,33 @@ class VAE_LE_NxN(torch.nn.Module):
             # phi_ref_full.append(
             #     phi_ref[:,:self.block_size]
             # )
-##########################
+            ##########################
             output_q = q_hat[:, : self.block_size, :]
             out_q.append(output_q)
 
-        out_const = torch.cat(out, axis=1).detach()#.clone()
-        out_const *=  (torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
-        var_hat = torch.cat(var_out, axis=-1).view(-1,self.num_channels).detach().mean(0) / 2.0 #.clone()
-##########################
+        out_const = torch.cat(out, axis=1).detach()  # .clone()
+        out_const *= (
+            (
+                torch.sqrt(
+                    torch.sum(
+                        self.demapper.p_symbols
+                        * torch.abs(self.demapper.constellation) ** 2
+                    )
+                )
+                / torch.sqrt(torch.mean(torch.abs(out_const) ** 2, dim=-1))
+            )
+            .unsqueeze(1)
+            .repeat(1, out_const.shape[-1])
+        )
+        var_hat = (
+            torch.cat(var_out, axis=-1).view(-1, self.num_channels).detach().mean(0)
+            / 2.0
+        )  # .clone()
+        ##########################
         # phi_full_full = torch.cat(phi_full, axis=1).detach()#.clone()
         # phi_ref_full_full = torch.cat(phi_ref_full, axis=1).detach()#.clone()
         # ref_full_full = torch.cat(ref_full, axis=1).detach()#.clone()
-        
+
         # import matplotlib.pyplot as plt
         # plt.plot(phi_ref_full_full[0,:])
         # phi_ref_cumsum = torch.cumsum(phi_ref_full_full[0,:],dim=0)
@@ -2938,11 +3223,11 @@ class VAE_LE_NxN(torch.nn.Module):
         # plt.plot((phi_ref_cumsum[20:]-phi_ref_cumsum[:-20])/20)
         # plt.plot(-phi_full_full[0,:])
         # plt.plot(-self.cpe(out_const[0,:])[1])
-##########################
+        ##########################
 
         if self.use_cpe == True:
             for cc in range(self.num_channels):
-                out_const[cc,:] = self.cpe(out_const[cc,:])[0]
+                out_const[cc, :] = self.cpe(out_const[cc, :])[0]
             if self.IQ_separate == True:
                 num_level = self.demapper.constellation.shape[-1]
                 q_hat = torch.zeros(
@@ -2990,6 +3275,7 @@ class VAE_LE_NxN(torch.nn.Module):
     def update_var(self, new_var):
         self.demapper.noise_sigma = new_var
 
+
 ##############################################################################################
 ##############################################################################################
 class VAE_LE_NxN_orig(torch.nn.Module):
@@ -3000,9 +3286,9 @@ class VAE_LE_NxN_orig(torch.nn.Module):
     def __init__(
         self,
         num_channels=None,
-        taps_EQ = None,
+        taps_EQ=None,
         num_taps_EQ=None,
-        taps_EST = None,
+        taps_EST=None,
         num_taps_EST=None,
         demapper=None,
         sps=2,
@@ -3039,29 +3325,45 @@ class VAE_LE_NxN_orig(torch.nn.Module):
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.register_buffer("var_from_estimate", torch.as_tensor(var_from_estimate))
         self.register_buffer("use_cpe", torch.as_tensor(use_cpe))
-        self.register_buffer("use_cpe_in_training", torch.as_tensor(use_cpe_in_training))
+        self.register_buffer(
+            "use_cpe_in_training", torch.as_tensor(use_cpe_in_training)
+        )
         self.register_buffer("use_corr_avoid", torch.as_tensor(use_corr_avoid))
-        self.avg_filter_type=avg_filter_type
+        self.avg_filter_type = avg_filter_type
         self.register_buffer("alpha_corr", torch.as_tensor(alpha_corr))
         self.register_buffer("corr_window", torch.as_tensor(corr_window))
         if cpe_window_length != None:
             if cpe_train_window_length != None:
-                self.register_buffer("cpe_window_length", torch.as_tensor(cpe_window_length))
-                self.register_buffer("cpe_train_window_length", torch.as_tensor(cpe_train_window_length))
+                self.register_buffer(
+                    "cpe_window_length", torch.as_tensor(cpe_window_length)
+                )
+                self.register_buffer(
+                    "cpe_train_window_length", torch.as_tensor(cpe_train_window_length)
+                )
             else:
-                self.register_buffer("cpe_window_length", torch.as_tensor(cpe_window_length))
-                self.register_buffer("cpe_train_window_length", torch.as_tensor(cpe_window_length))
+                self.register_buffer(
+                    "cpe_window_length", torch.as_tensor(cpe_window_length)
+                )
+                self.register_buffer(
+                    "cpe_train_window_length", torch.as_tensor(cpe_window_length)
+                )
         if temperature_per_epoch != None:
-            self.register_buffer("temperature_per_epoch", torch.as_tensor(temperature_per_epoch))
+            self.register_buffer(
+                "temperature_per_epoch", torch.as_tensor(temperature_per_epoch)
+            )
         else:
             self.register_buffer("temperature_per_epoch", torch.as_tensor(1e-2))
         if angles_per_quadrant != None:
-            self.register_buffer("angles_per_quadrant", torch.as_tensor(angles_per_quadrant))
+            self.register_buffer(
+                "angles_per_quadrant", torch.as_tensor(angles_per_quadrant)
+            )
         self.mode = mode
         ########## Equalizer ############
         if taps_EQ is None:
             if num_taps_EQ is None:
-                raise ValueError("Please provide either a valid num_taps_EQ or taps_EQ.")
+                raise ValueError(
+                    "Please provide either a valid num_taps_EQ or taps_EQ."
+                )
             else:
                 self.butterfly_forward = ButterflyNxN(
                     num_taps=num_taps_EQ,
@@ -3083,7 +3385,9 @@ class VAE_LE_NxN_orig(torch.nn.Module):
         ########## Estimator ############
         if taps_EST is None:
             if num_taps_EST is None:
-                raise ValueError("Please provide either a valid num_taps_EST or taps_EST.")
+                raise ValueError(
+                    "Please provide either a valid num_taps_EST or taps_EST."
+                )
             else:
                 self.butterfly_backward = ButterflyNxN(
                     num_taps=num_taps_EST,
@@ -3102,7 +3406,7 @@ class VAE_LE_NxN_orig(torch.nn.Module):
                 mode=mode,
             )
         #######################
-    
+
         self.demapper = demapper
         self.optimizer = torch.optim.Adam(
             self.butterfly_forward.parameters(),
@@ -3117,7 +3421,9 @@ class VAE_LE_NxN_orig(torch.nn.Module):
 
         if use_cpe == True:
             if cpe_window_length is None or angles_per_quadrant is None:
-                raise ValueError("Please provide cpe_window_length and angles_per_quadrant when using CPE.")
+                raise ValueError(
+                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                )
             else:
                 ##cpe_window_length = 50
                 self.cpe = BPS(
@@ -3125,17 +3431,19 @@ class VAE_LE_NxN_orig(torch.nn.Module):
                     demapper.constellation.squeeze(),
                     self.cpe_window_length,
                     diff=False,
-                    temperature_per_epoch=self.temperature_per_epoch, #1e-3,
+                    temperature_per_epoch=self.temperature_per_epoch,  # 1e-3,
                     no_sectors=4,
                     PS_aware=False,
                     p_symbols=demapper.p_symbols.squeeze(),
                     noise_sigma=demapper.noise_sigma,
-                    avg_filter_type=self.avg_filter_type,  #"rect",
+                    avg_filter_type=self.avg_filter_type,  # "rect",
                     trainable=False,
                 )
         if use_cpe_in_training == True:
             if cpe_window_length is None or angles_per_quadrant is None:
-                raise ValueError("Please provide cpe_window_length and angles_per_quadrant when using CPE.")
+                raise ValueError(
+                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                )
             else:
                 self.cpe_in_loop = BPS(
                     self.angles_per_quadrant,
@@ -3147,7 +3455,7 @@ class VAE_LE_NxN_orig(torch.nn.Module):
                     PS_aware=False,
                     p_symbols=demapper.p_symbols.squeeze(),
                     noise_sigma=demapper.noise_sigma,
-                    avg_filter_type=self.avg_filter_type, #"rect",  #"rect","tri"
+                    avg_filter_type=self.avg_filter_type,  # "rect",  #"rect","tri"
                     trainable=False,
                 )
                 # self.cpe = vandv.ViterbiViterbi(
@@ -3159,18 +3467,18 @@ class VAE_LE_NxN_orig(torch.nn.Module):
 
     def init_cpe_for_train(self):
         self.cpe_in_loop = BPS(
-                    self.angles_per_quadrant,
-                    self.demapper.constellation.squeeze(),
-                    self.cpe_train_window_length,
-                    diff=True,
-                    temperature_per_epoch=self.temperature_per_epoch,
-                    no_sectors=4,
-                    PS_aware=False,
-                    p_symbols=self.demapper.p_symbols.squeeze(),
-                    noise_sigma=self.demapper.noise_sigma,
-                    avg_filter_type=self.avg_filter_type,  #"rect",
-                    trainable=False,
-                )
+            self.angles_per_quadrant,
+            self.demapper.constellation.squeeze(),
+            self.cpe_train_window_length,
+            diff=True,
+            temperature_per_epoch=self.temperature_per_epoch,
+            no_sectors=4,
+            PS_aware=False,
+            p_symbols=self.demapper.p_symbols.squeeze(),
+            noise_sigma=self.demapper.noise_sigma,
+            avg_filter_type=self.avg_filter_type,  # "rect",
+            trainable=False,
+        )
 
     def reset(self):
         self.lr = self.start_lr.clone()
@@ -3202,24 +3510,24 @@ class VAE_LE_NxN_orig(torch.nn.Module):
 
         num_samps = y.shape[1]
         # samples_per_step = self.butterfly_forward.num_taps + self.block_size
-##########################
+        ##########################
         phi_ref_full = []
         phi_full = []
         ref_full = []
-##########################
+        ##########################
         out = []
         out_q = []
         var_out = []
         # We start our loop already at num_taps  (because we cannot equalize the start)
         # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
         # We will process sps * block_size - 2 * num_taps because we will cut out the first and last block
-##########################
+        ##########################
         ref_up = torch.zeros_like(y)
-        ref_up[:,::self.sps] = x[:,:y.shape[-1]//self.sps]
-##########################
+        ref_up[:, :: self.sps] = x[:, : y.shape[-1] // self.sps]
+        ##########################
         index_padding = (self.butterfly_forward.num_taps - 1) // 2
         phi_pre = torch.zeros(y.shape[0], device=y.device, dtype=torch.float32)
-        piHalfTensor = torch.tensor(torch.pi/2, device=y.device)
+        piHalfTensor = torch.tensor(torch.pi / 2, device=y.device)
         for i, k in enumerate(
             range(
                 index_padding,
@@ -3247,7 +3555,7 @@ class VAE_LE_NxN_orig(torch.nn.Module):
             ]  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
 
             y_symb = torch.empty_like(y_symb_temp)  # y_symb_temp #
-            phi_loop = torch.zeros_like(y_symb_temp).real #.to(torch.float32)
+            phi_loop = torch.zeros_like(y_symb_temp).real  # .to(torch.float32)
 
             # We calculate the loss with less symbols, since the forward operation with "valid"
             # is missing some symbols
@@ -3256,29 +3564,41 @@ class VAE_LE_NxN_orig(torch.nn.Module):
                 (self.butterfly_forward.num_taps - 1)
                 // 2 : -((self.butterfly_forward.num_taps - 1) // 2)
             ]
-##########################
-            temp_ref = ref_up[:,y_index]
-            ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again 
+            ##########################
+            temp_ref = ref_up[:, y_index]
+            ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(
+                self.num_channels, -1
+            )  # .nonzero() downsamples to 1sps again
 
             phi_ref = torch.angle(y_symb_temp * ref.conj())
-##########################
+            ##########################
             if self.use_cpe_in_training == True:
-                y_symb_temp1 =  y_symb_temp.clone()*(torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(y_symb_temp)**2, dim=-1))).unsqueeze(1).repeat(1,y_symb_temp.shape[-1])
+                y_symb_temp1 = y_symb_temp.clone() * (
+                    torch.sqrt(
+                        torch.sum(
+                            self.demapper.p_symbols
+                            * torch.abs(self.demapper.constellation) ** 2
+                        )
+                    )
+                    / torch.sqrt(torch.mean(torch.abs(y_symb_temp) ** 2, dim=-1))
+                ).unsqueeze(1).repeat(1, y_symb_temp.shape[-1])
                 for cc in range(self.num_channels):
-                    y_symb[cc,:], phi_loop[cc,:] = self.cpe_in_loop(y_symb_temp1[cc,:].clone())  # [0]
+                    y_symb[cc, :], phi_loop[cc, :] = self.cpe_in_loop(
+                        y_symb_temp1[cc, :].clone()
+                    )  # [0]
                     ## make sure that there are no phase slips between blocks
-                    diff_pre = (phi_pre[cc]-phi_loop[cc,0]) 
+                    diff_pre = phi_pre[cc] - phi_loop[cc, 0]
                     # if diff_pre > thresh_between_blocks:
                     #     phi_loop[cc,in_index] += torch.pi/2
                     # elif diff_pre < -thresh_between_blocks:
                     #     phi_loop[cc,in_index] -= torch.pi/2
-                    if torch.abs(diff_pre+piHalfTensor) < torch.abs(diff_pre):
-                        phi_loop[cc,:] -= piHalfTensor
-                        y_symb[cc,:] *=  torch.exp(-1j * piHalfTensor)
-                    elif torch.abs(diff_pre-piHalfTensor) < torch.abs(diff_pre):
-                        phi_loop[cc,:] += piHalfTensor
-                        y_symb[cc,:] *=  torch.exp(1j * piHalfTensor)
-                    phi_pre[cc] = phi_loop[cc,-1]
+                    if torch.abs(diff_pre + piHalfTensor) < torch.abs(diff_pre):
+                        phi_loop[cc, :] -= piHalfTensor
+                        y_symb[cc, :] *= torch.exp(-1j * piHalfTensor)
+                    elif torch.abs(diff_pre - piHalfTensor) < torch.abs(diff_pre):
+                        phi_loop[cc, :] += piHalfTensor
+                        y_symb[cc, :] *= torch.exp(1j * piHalfTensor)
+                    phi_pre[cc] = phi_loop[cc, -1]
             else:
                 y_symb = y_symb_temp
 
@@ -3311,7 +3631,6 @@ class VAE_LE_NxN_orig(torch.nn.Module):
                         y_symb[out_chan, :]
                     ).unsqueeze(0)
 
-            
             loss, var = ELBO_NxN(
                 # loss, var = ELBO_DP(
                 y[:, y_index],
@@ -3325,17 +3644,27 @@ class VAE_LE_NxN_orig(torch.nn.Module):
             )
 
             if self.use_corr_avoid == True:
-                #corr_loss = torch.zeros_like(loss)
-                for kk in range(y.shape[0]):             # calculate correlation of each channel to all others
+                # corr_loss = torch.zeros_like(loss)
+                for kk in range(
+                    y.shape[0]
+                ):  # calculate correlation of each channel to all others
                     ind_corr = torch.arange(y.shape[0])
-                    ind_corr = ind_corr[ind_corr!=kk]
-                    loss += self.alpha_corr*torch.sum(torch.abs(
-                        torch.conv1d(
-                            y_symb[kk,:].unsqueeze(0),
-                            y_symb[ind_corr,y_symb.shape[-1]-self.corr_window//2:y_symb.shape[-1]+self.corr_window//2].unsqueeze(1),
-                            padding='valid',
+                    ind_corr = ind_corr[ind_corr != kk]
+                    loss += self.alpha_corr * torch.sum(
+                        torch.abs(
+                            torch.conv1d(
+                                y_symb[kk, :].unsqueeze(0),
+                                y_symb[
+                                    ind_corr,
+                                    y_symb.shape[-1]
+                                    - self.corr_window // 2 : y_symb.shape[-1]
+                                    + self.corr_window // 2,
+                                ].unsqueeze(1),
+                                padding="valid",
+                            )
                         )
-                    )**2)
+                        ** 2
+                    )
 
             # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
@@ -3359,34 +3688,39 @@ class VAE_LE_NxN_orig(torch.nn.Module):
             # out.append(
             #     output_symbols
             # )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
-            out.append(
-                y_symb_temp[:, : self.block_size]
-            ) 
-            var_out.append(
-                var
-            )
-##########################
-            phi_full.append(
-                phi_loop[:,:self.block_size]
-            )
-            ref_full.append(
-                ref[:,:self.block_size]
-            )
-            phi_ref_full.append(
-                phi_ref[:,:self.block_size]
-            )
-##########################
+            out.append(y_symb_temp[:, : self.block_size])
+            var_out.append(var)
+            ##########################
+            phi_full.append(phi_loop[:, : self.block_size])
+            ref_full.append(ref[:, : self.block_size])
+            phi_ref_full.append(phi_ref[:, : self.block_size])
+            ##########################
             output_q = q_hat[:, : self.block_size, :]
             out_q.append(output_q)
 
-        out_const = torch.cat(out, axis=1).detach()#.clone()
-        out_const *=  (torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
-        var_hat = torch.cat(var_out, axis=-1).view(-1,self.num_channels).detach().mean(0) / 2.0 #.clone()
-##########################
-        phi_full_full = torch.cat(phi_full, axis=1).detach()#.clone()
-        phi_ref_full_full = torch.cat(phi_ref_full, axis=1).detach()#.clone()
-        ref_full_full = torch.cat(ref_full, axis=1).detach()#.clone()
-        
+        out_const = torch.cat(out, axis=1).detach()  # .clone()
+        out_const *= (
+            (
+                torch.sqrt(
+                    torch.sum(
+                        self.demapper.p_symbols
+                        * torch.abs(self.demapper.constellation) ** 2
+                    )
+                )
+                / torch.sqrt(torch.mean(torch.abs(out_const) ** 2, dim=-1))
+            )
+            .unsqueeze(1)
+            .repeat(1, out_const.shape[-1])
+        )
+        var_hat = (
+            torch.cat(var_out, axis=-1).view(-1, self.num_channels).detach().mean(0)
+            / 2.0
+        )  # .clone()
+        ##########################
+        phi_full_full = torch.cat(phi_full, axis=1).detach()  # .clone()
+        phi_ref_full_full = torch.cat(phi_ref_full, axis=1).detach()  # .clone()
+        ref_full_full = torch.cat(ref_full, axis=1).detach()  # .clone()
+
         # import matplotlib.pyplot as plt
         # plt.plot(phi_ref_full_full[0,:])
         # phi_ref_cumsum = torch.cumsum(phi_ref_full_full[0,:],dim=0)
@@ -3394,11 +3728,11 @@ class VAE_LE_NxN_orig(torch.nn.Module):
         # plt.plot((phi_ref_cumsum[20:]-phi_ref_cumsum[:-20])/20)
         # plt.plot(-phi_full_full[0,:])
         # plt.plot(-self.cpe(out_const[0,:])[1])
-##########################
+        ##########################
 
         if self.use_cpe == True:
             for cc in range(self.num_channels):
-                out_const[cc,:] = self.cpe(out_const[cc,:])[0]
+                out_const[cc, :] = self.cpe(out_const[cc, :])[0]
             if self.IQ_separate == True:
                 num_level = self.demapper.constellation.shape[-1]
                 q_hat = torch.zeros(
@@ -3446,8 +3780,10 @@ class VAE_LE_NxN_orig(torch.nn.Module):
     def update_var(self, new_var):
         self.demapper.noise_sigma = new_var
 
+
 ##############################################################################################
 ##############################################################################################
+
 
 class VAE_LE_flex_NxN(torch.nn.Module):
     """
@@ -3457,14 +3793,14 @@ class VAE_LE_flex_NxN(torch.nn.Module):
     def __init__(
         self,
         num_channels=None,
-        taps_EQ = None,
+        taps_EQ=None,
         num_taps_EQ=None,
-        taps_EST = None,
+        taps_EST=None,
         num_taps_EST=None,
         demapper=None,
         sps=2,
         block_size=200,
-        symb_per_step = 10,
+        symb_per_step=10,
         lr=0.5e-2,
         requires_q=False,
         IQ_separate=False,
@@ -3474,7 +3810,7 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         corr_window=50,
         use_cpe=False,
         use_cpe_in_training=False,
-        cpe_window_length = None,
+        cpe_window_length=None,
         angles_per_quadrant=None,
         device="cpu",
         mode="valid",
@@ -3495,18 +3831,24 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.register_buffer("var_from_estimate", torch.as_tensor(var_from_estimate))
         self.register_buffer("use_cpe", torch.as_tensor(use_cpe))
-        self.register_buffer("use_cpe_in_training", torch.as_tensor(use_cpe_in_training))
+        self.register_buffer(
+            "use_cpe_in_training", torch.as_tensor(use_cpe_in_training)
+        )
         if cpe_window_length != None:
-            self.register_buffer("cpe_window_length", torch.as_tensor(cpe_window_length))
+            self.register_buffer(
+                "cpe_window_length", torch.as_tensor(cpe_window_length)
+            )
         if angles_per_quadrant != None:
-            self.register_buffer("angles_per_quadrant", torch.as_tensor(angles_per_quadrant))
+            self.register_buffer(
+                "angles_per_quadrant", torch.as_tensor(angles_per_quadrant)
+            )
         self.register_buffer("use_corr_avoid", torch.as_tensor(use_corr_avoid))
         self.register_buffer("alpha_corr", torch.as_tensor(alpha_corr))
         self.register_buffer("corr_window", torch.as_tensor(corr_window))
 
-        self.register_buffer("N_phi_ave", torch.as_tensor(32))      # 50 at code of IPQ
+        self.register_buffer("N_phi_ave", torch.as_tensor(32))  # 50 at code of IPQ
         self.mode = mode
-        
+
         # f = scipy.io.loadmat("waveforms/data_from_IPQ/weights.mat")
         # weigh = f.get('wk_cma')
         # taps = torch.zeros(8,8,151, dtype=torch.complex64)
@@ -3515,7 +3857,9 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         ########## Equalizer ############
         if taps_EQ is None:
             if num_taps_EQ is None:
-                raise ValueError("Please provide either a valid num_taps_EQ or taps_EQ.")
+                raise ValueError(
+                    "Please provide either a valid num_taps_EQ or taps_EQ."
+                )
             else:
                 self.butterfly_forward = ButterflyNxN(
                     num_taps=num_taps_EQ,
@@ -3539,7 +3883,9 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         ########## Estimator ############
         if taps_EST is None:
             if num_taps_EST is None:
-                raise ValueError("Please provide either a valid num_taps_EST or taps_EST.")
+                raise ValueError(
+                    "Please provide either a valid num_taps_EST or taps_EST."
+                )
             else:
                 self.butterfly_backward = ButterflyNxN(
                     num_taps=num_taps_EST,
@@ -3558,19 +3904,27 @@ class VAE_LE_flex_NxN(torch.nn.Module):
                 mode=mode,
             )
         #######################
-        taps_ma = torch.zeros(self.num_channels,self.num_channels,self.N_phi_ave,dtype=torch.complex64, device=device)
+        taps_ma = torch.zeros(
+            self.num_channels,
+            self.num_channels,
+            self.N_phi_ave,
+            dtype=torch.complex64,
+            device=device,
+        )
         for ma_idx in range(self.num_channels):
-            taps_ma[ma_idx,ma_idx,:] = torch.ones(self.N_phi_ave,dtype=torch.complex64, device=device)
+            taps_ma[ma_idx, ma_idx, :] = torch.ones(
+                self.N_phi_ave, dtype=torch.complex64, device=device
+            )
         self.moving_ave = ButterflyNxN(
             taps=taps_ma,
-            #num_taps=num_taps,
+            # num_taps=num_taps,
             num_channels=num_channels,
             trainable=False,
             timedomain=True,
             device=device,
             mode="valid",
         )
-    
+
         self.demapper = demapper
         self.optimizer = torch.optim.Adam(
             self.butterfly_forward.parameters(),
@@ -3585,9 +3939,11 @@ class VAE_LE_flex_NxN(torch.nn.Module):
 
         if use_cpe == True:
             if cpe_window_length is None or angles_per_quadrant is None:
-                raise ValueError("Please provide cpe_window_length and angles_per_quadrant when using CPE.")
+                raise ValueError(
+                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                )
             else:
-                #cpe_window_length = 50
+                # cpe_window_length = 50
                 self.cpe = BPS(
                     self.angles_per_quadrant,
                     demapper.constellation,
@@ -3595,12 +3951,14 @@ class VAE_LE_flex_NxN(torch.nn.Module):
                     diff=False,
                     temperature_per_epoch=1e-2,
                     no_sectors=4,
-                    avg_filter_type="tri", #"rect",
+                    avg_filter_type="tri",  # "rect",
                     trainable=False,
                 )
         if use_cpe_in_training == True:
             if cpe_window_length is None or angles_per_quadrant is None:
-                raise ValueError("Please provide cpe_window_length and angles_per_quadrant when using CPE.")
+                raise ValueError(
+                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                )
             else:
                 self.cpe_in_loop = BPS(
                     self.angles_per_quadrant,
@@ -3609,7 +3967,7 @@ class VAE_LE_flex_NxN(torch.nn.Module):
                     diff=True,
                     temperature_per_epoch=1e-2,
                     no_sectors=4,
-                    avg_filter_type="tri", #"rect",
+                    avg_filter_type="tri",  # "rect",
                     trainable=False,
                 )
         # self.cpe = vandv.ViterbiViterbi(
@@ -3618,16 +3976,16 @@ class VAE_LE_flex_NxN(torch.nn.Module):
 
     def init_cpe_for_train(self):
         self.cpe_in_loop = BPS(
-                    self.angles_per_quadrant,
-                    self.demapper.constellation.squeeze(),
-                    self.cpe_window_length,
-                    diff=True,
-                    temperature_per_epoch=1e-2,
-                    no_sectors=4,
-                    avg_filter_type="tri",  #"rect",
-                    trainable=False,
-                )
-        
+            self.angles_per_quadrant,
+            self.demapper.constellation.squeeze(),
+            self.cpe_window_length,
+            diff=True,
+            temperature_per_epoch=1e-2,
+            no_sectors=4,
+            avg_filter_type="tri",  # "rect",
+            trainable=False,
+        )
+
     def reset(self):
         self.lr = self.start_lr.clone()
         # self.butterfly_forward = ButterflyNxN(
@@ -3647,14 +4005,16 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
-        assert self.N_phi_ave < self.butterfly_forward.num_taps     # TODO: implement for both cases
+        assert (
+            self.N_phi_ave < self.butterfly_forward.num_taps
+        )  # TODO: implement for both cases
 
         num_samps = y.shape[1]
         # samples_per_step = self.butterfly_forward.num_taps + self.block_size
 
         out = []
         out_q = []
-        var_out=[]
+        var_out = []
         phi_plot = []
         # We start our loop already at num_taps  (because we cannot equalize the start)
         # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
@@ -3663,14 +4023,20 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         # ref_up = torch.zeros_like(y)
         # ref_up[:,::self.sps] = x[:,:y.shape[-1]//self.sps]
 
-        mod_symb_per_step_2 = self.symb_per_step%2
+        mod_symb_per_step_2 = self.symb_per_step % 2
         index_padding = (self.butterfly_forward.num_taps - 1) // 2
-        temp_eqIn = torch.zeros(self.N_phi_ave, y.shape[0], self.sps * self.block_size + 2*index_padding, dtype=y.dtype, device=y.device)     # shift register with dim: N_phi_ave, num. of channels, block_size*sps
+        temp_eqIn = torch.zeros(
+            self.N_phi_ave,
+            y.shape[0],
+            self.sps * self.block_size + 2 * index_padding,
+            dtype=y.dtype,
+            device=y.device,
+        )  # shift register with dim: N_phi_ave, num. of channels, block_size*sps
         # temp_phi = torch.zeros(self.N_phi_ave, dtype=y.dtype, device=y.device)
-        #temp_ref = torch.zeros(self.N_phi_ave, y.shape[0], self.block_size, dtype=y.dtype, device=y.device)
-        
+        # temp_ref = torch.zeros(self.N_phi_ave, y.shape[0], self.block_size, dtype=y.dtype, device=y.device)
+
         y_pad = self.pad_func(y)
-        #ref_pad = self.pad_func(x)
+        # ref_pad = self.pad_func(x)
         # # init ref matrix
         # temp_eqIn[self.N_phi_ave//2,:,:] = y[:, 0 : self.sps * self.block_size + 2*index_padding]
         # for jj in range(0,self.N_phi_ave//2):
@@ -3692,12 +4058,14 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             # self.update_lr(self.lr * 0.5)
             # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
-                k- index_padding,   # padding already included in y_pad
-                k + self.sps * self.block_size + index_padding,   # times two since padding already included in y_pad
+                k - index_padding,  # padding already included in y_pad
+                k
+                + self.sps * self.block_size
+                + index_padding,  # times two since padding already included in y_pad
             )
             # ref_index = torch.arange(
-            #     i * self.symb_per_step + (index_padding+1)//2 + index_padding,  
-            #     i * self.symb_per_step + (index_padding+1)//2 + index_padding + self.block_size,   
+            #     i * self.symb_per_step + (index_padding+1)//2 + index_padding,
+            #     i * self.symb_per_step + (index_padding+1)//2 + index_padding + self.block_size,
             # )
 
             # for jj in range(0,self.N_phi_ave//2):
@@ -3720,11 +4088,13 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             ]  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
 
             y_symb = torch.empty_like(y_symb_temp)  # y_symb_temp #
-            phi_loop = torch.zeros_like(y_symb_temp).real #to(torch.float32)
+            phi_loop = torch.zeros_like(y_symb_temp).real  # to(torch.float32)
 
             if self.use_cpe_in_training == True:
                 for cc in range(self.num_channels):
-                    y_symb[cc,:], phi_loop[cc,:] = self.cpe_in_loop(y_symb_temp[cc,:].clone())  # [0]
+                    y_symb[cc, :], phi_loop[cc, :] = self.cpe_in_loop(
+                        y_symb_temp[cc, :].clone()
+                    )  # [0]
             else:
                 y_symb = y_symb_temp
 
@@ -3760,9 +4130,7 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             # We calculate the loss with less symbols, since the forward operation with "valid"
             # is missing some symbols
             # We assume the symbol of interest is at the center tap of the filter
-            y_index = in_index[
-                index_padding : -index_padding
-            ]
+            y_index = in_index[index_padding:-index_padding]
             loss, var = ELBO_NxN(
                 # loss, var = ELBO_DP(
                 y_pad[:, y_index],
@@ -3776,17 +4144,27 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             )
 
             if self.use_corr_avoid == True:
-                #corr_loss = torch.zeros_like(loss)
-                for kk in range(y.shape[0]):             # calculate correlation of each channel to all others
+                # corr_loss = torch.zeros_like(loss)
+                for kk in range(
+                    y.shape[0]
+                ):  # calculate correlation of each channel to all others
                     ind_corr = torch.arange(y.shape[0])
-                    ind_corr = ind_corr[ind_corr!=kk]
-                    loss += self.alpha_corr*torch.sum(torch.abs(
-                        torch.conv1d(
-                            y_symb[kk,:].unsqueeze(0),
-                            y_symb[ind_corr,y_symb.shape[-1]-self.corr_window//2:y_symb.shape[-1]+self.corr_window//2].unsqueeze(1),
-                            padding='valid',
+                    ind_corr = ind_corr[ind_corr != kk]
+                    loss += self.alpha_corr * torch.sum(
+                        torch.abs(
+                            torch.conv1d(
+                                y_symb[kk, :].unsqueeze(0),
+                                y_symb[
+                                    ind_corr,
+                                    y_symb.shape[-1]
+                                    - self.corr_window // 2 : y_symb.shape[-1]
+                                    + self.corr_window // 2,
+                                ].unsqueeze(1),
+                                padding="valid",
+                            )
                         )
-                    )**2)
+                        ** 2
+                    )
 
             # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
@@ -3803,8 +4181,6 @@ class VAE_LE_flex_NxN(torch.nn.Module):
                     * self.demapper.noise_sigma.detach().clone(),  # torch.sqrt(var).detach()), min=0.1
                 )
 
-
-
             # # y_index = in_index[
             # #     (self.butterfly_forward.num_taps - 1)
             # #     // 2 : -((self.butterfly_forward.num_taps - 1) // 2)
@@ -3812,10 +4188,10 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             # # temp_symb = temp_symb.roll(shifts=(1), dims=(0))
             # # #ref_index = in_index[ (self.butterfly_forward.num_taps - 1) : ] + (self.butterfly_forward.num_taps + 1)*self.sps + 86
             # # temp_ref = ref_up[:,y_index]
-            # # temp_symb[0,:,:] = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again 
-            # # ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again 
+            # # temp_symb[0,:,:] = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again
+            # # ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again
             # ref = temp_ref[self.N_phi_ave//2, :, :]
-            
+
             # if self.use_cpe == True:
             #     # N_phi_ave = self.N_phi_ave
             #     phi_off = (torch.angle(y_hat) - torch.angle(temp_ref)).detach() # unwrap necessary?
@@ -3824,7 +4200,7 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             #     # for ii in range(N_phi_ave):
             #     #     y_phi_sum += torch.exp(1j*phi_off[:,ii:-(N_phi_ave-ii)])    # sum in the complex domain
             #     phi_ma = torch.angle(torch.sum(torch.exp(1j*phi_off) , dim=0) )
-            #     ref_loss = ref *torch.exp(1j*phi_ma) 
+            #     ref_loss = ref *torch.exp(1j*phi_ma)
             #     loss = self.loss_func( y_symb.real, ref_loss.real ) + self.loss_func( y_symb.imag, ref_loss.imag)
             #     # for cc in range(self.num_channels):
             #     #     ref[cc,:] *= torch.exp(1j*self.cpe(y_symb[cc,:])[1])    # rotate reference to make update independet of phase noise
@@ -3841,21 +4217,25 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             # # self.optimizer_var.zero_grad()
 
             # what about odd symbols_per_step?
-            if i==0:
-                ind_out = torch.arange( 0, (self.block_size+self.symb_per_step)//2 ) 
+            if i == 0:
+                ind_out = torch.arange(0, (self.block_size + self.symb_per_step) // 2)
             else:
-                ind_out = torch.arange( (self.block_size-self.symb_per_step)//2, (self.block_size+self.symb_per_step)//2 ) + mod_symb_per_step_2
-            
-            output_symbols =  y_symb_temp[ #y_symb[
+                ind_out = (
+                    torch.arange(
+                        (self.block_size - self.symb_per_step) // 2,
+                        (self.block_size + self.symb_per_step) // 2,
+                    )
+                    + mod_symb_per_step_2
+                )
+
+            output_symbols = y_symb_temp[  # y_symb[
                 :, ind_out
             ]  # - self.butterfly_forward.num_taps // 2]
             # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
             out.append(
                 output_symbols
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
-            var_out.append(
-                var
-            )
+            var_out.append(var)
 
             output_q = q_hat[:, ind_out, :]
             out_q.append(output_q)
@@ -3864,13 +4244,28 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
 
         ###################
-        var_hat = torch.cat(var_out, axis=-1).view(-1,self.num_channels).detach().mean(0) / 2.0 #.clone()
+        var_hat = (
+            torch.cat(var_out, axis=-1).view(-1, self.num_channels).detach().mean(0)
+            / 2.0
+        )  # .clone()
         out_const = torch.cat(out, axis=1).detach().clone()
-        out_const *= (torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
+        out_const *= (
+            (
+                torch.sqrt(
+                    torch.sum(
+                        self.demapper.p_symbols
+                        * torch.abs(self.demapper.constellation) ** 2
+                    )
+                )
+                / torch.sqrt(torch.mean(torch.abs(out_const) ** 2, dim=-1))
+            )
+            .unsqueeze(1)
+            .repeat(1, out_const.shape[-1])
+        )
 
         if self.use_cpe == True:
             for cc in range(self.num_channels):
-                out_const[cc,:] = self.cpe(out_const[cc,:])[0]
+                out_const[cc, :] = self.cpe(out_const[cc, :])[0]
             if self.IQ_separate == True:
                 num_level = self.demapper.constellation.shape[-1]
                 q_hat = torch.zeros(
@@ -3919,6 +4314,7 @@ class VAE_LE_flex_NxN(torch.nn.Module):
 ##############################################################################################
 ##############################################################################################
 
+
 class VAE_LE_overhead_NxN(torch.nn.Module):
     """
     Class that can be dropped in to perform equalization
@@ -3927,14 +4323,14 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
     def __init__(
         self,
         num_channels=None,
-        taps_EQ = None,
+        taps_EQ=None,
         num_taps_EQ=None,
-        taps_EST = None,
+        taps_EST=None,
         num_taps_EST=None,
         demapper=None,
         sps=2,
         block_size=200,
-        symb_per_step = 10,
+        symb_per_step=10,
         lr=0.5e-2,
         requires_q=False,
         IQ_separate=False,
@@ -3944,7 +4340,7 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         corr_window=50,
         use_cpe=False,
         use_cpe_in_training=False,
-        cpe_window_length = None,
+        cpe_window_length=None,
         angles_per_quadrant=None,
         device="cpu",
         mode="valid",
@@ -3965,18 +4361,24 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.register_buffer("var_from_estimate", torch.as_tensor(var_from_estimate))
         self.register_buffer("use_cpe", torch.as_tensor(use_cpe))
-        self.register_buffer("use_cpe_in_training", torch.as_tensor(use_cpe_in_training))
+        self.register_buffer(
+            "use_cpe_in_training", torch.as_tensor(use_cpe_in_training)
+        )
         if cpe_window_length != None:
-            self.register_buffer("cpe_window_length", torch.as_tensor(cpe_window_length))
+            self.register_buffer(
+                "cpe_window_length", torch.as_tensor(cpe_window_length)
+            )
         if angles_per_quadrant != None:
-            self.register_buffer("angles_per_quadrant", torch.as_tensor(angles_per_quadrant))
+            self.register_buffer(
+                "angles_per_quadrant", torch.as_tensor(angles_per_quadrant)
+            )
         self.register_buffer("use_corr_avoid", torch.as_tensor(use_corr_avoid))
         self.register_buffer("alpha_corr", torch.as_tensor(alpha_corr))
         self.register_buffer("corr_window", torch.as_tensor(corr_window))
 
-        self.register_buffer("N_phi_ave", torch.as_tensor(32))      # 50 at code of IPQ
+        self.register_buffer("N_phi_ave", torch.as_tensor(32))  # 50 at code of IPQ
         self.mode = mode
-        
+
         # f = scipy.io.loadmat("waveforms/data_from_IPQ/weights.mat")
         # weigh = f.get('wk_cma')
         # taps = torch.zeros(8,8,151, dtype=torch.complex64)
@@ -3985,7 +4387,9 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         ########## Equalizer ############
         if taps_EQ is None:
             if num_taps_EQ is None:
-                raise ValueError("Please provide either a valid num_taps_EQ or taps_EQ.")
+                raise ValueError(
+                    "Please provide either a valid num_taps_EQ or taps_EQ."
+                )
             else:
                 self.butterfly_forward = ButterflyNxN(
                     num_taps=num_taps_EQ,
@@ -4005,11 +4409,15 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
                 device=device,
                 mode=mode,
             )
-            self.pad_func = torch.nn.ConstantPad1d((taps_EQ.shape[-1] - 1) // 2 + cpe_window_length*sps, 0)
+            self.pad_func = torch.nn.ConstantPad1d(
+                (taps_EQ.shape[-1] - 1) // 2 + cpe_window_length * sps, 0
+            )
         ########## Estimator ############
         if taps_EST is None:
             if num_taps_EST is None:
-                raise ValueError("Please provide either a valid num_taps_EST or taps_EST.")
+                raise ValueError(
+                    "Please provide either a valid num_taps_EST or taps_EST."
+                )
             else:
                 self.butterfly_backward = ButterflyNxN(
                     num_taps=num_taps_EST,
@@ -4028,19 +4436,27 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
                 mode=mode,
             )
         #######################
-        taps_ma = torch.zeros(self.num_channels,self.num_channels,self.N_phi_ave,dtype=torch.complex64, device=device)
+        taps_ma = torch.zeros(
+            self.num_channels,
+            self.num_channels,
+            self.N_phi_ave,
+            dtype=torch.complex64,
+            device=device,
+        )
         for ma_idx in range(self.num_channels):
-            taps_ma[ma_idx,ma_idx,:] = torch.ones(self.N_phi_ave,dtype=torch.complex64, device=device)
+            taps_ma[ma_idx, ma_idx, :] = torch.ones(
+                self.N_phi_ave, dtype=torch.complex64, device=device
+            )
         self.moving_ave = ButterflyNxN(
             taps=taps_ma,
-            #num_taps=num_taps,
+            # num_taps=num_taps,
             num_channels=num_channels,
             trainable=False,
             timedomain=True,
             device=device,
             mode="valid",
         )
-    
+
         self.demapper = demapper
         self.optimizer = torch.optim.Adam(
             self.butterfly_forward.parameters(),
@@ -4055,9 +4471,11 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
 
         if use_cpe == True:
             if cpe_window_length is None or angles_per_quadrant is None:
-                raise ValueError("Please provide cpe_window_length and angles_per_quadrant when using CPE.")
+                raise ValueError(
+                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                )
             else:
-                #cpe_window_length = 50
+                # cpe_window_length = 50
                 self.cpe = BPS(
                     self.angles_per_quadrant,
                     demapper.constellation,
@@ -4065,12 +4483,14 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
                     diff=False,
                     temperature_per_epoch=1e-2,
                     no_sectors=4,
-                    avg_filter_type="tri", #"rect",
+                    avg_filter_type="tri",  # "rect",
                     trainable=False,
                 )
         if use_cpe_in_training == True:
             if cpe_window_length is None or angles_per_quadrant is None:
-                raise ValueError("Please provide cpe_window_length and angles_per_quadrant when using CPE.")
+                raise ValueError(
+                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                )
             else:
                 self.cpe_in_loop = BPS(
                     self.angles_per_quadrant,
@@ -4079,7 +4499,7 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
                     diff=True,
                     temperature_per_epoch=1e-2,
                     no_sectors=4,
-                    avg_filter_type="tri", #"rect",
+                    avg_filter_type="tri",  # "rect",
                     trainable=False,
                 )
         # self.cpe = vandv.ViterbiViterbi(
@@ -4088,16 +4508,16 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
 
     def init_cpe_for_train(self):
         self.cpe_in_loop = BPS(
-                    self.angles_per_quadrant,
-                    self.demapper.constellation.squeeze(),
-                    self.cpe_window_length,
-                    diff=True,
-                    temperature_per_epoch=1e-2,
-                    no_sectors=4,
-                    avg_filter_type="tri",  #"rect",
-                    trainable=False,
-                )
-        
+            self.angles_per_quadrant,
+            self.demapper.constellation.squeeze(),
+            self.cpe_window_length,
+            diff=True,
+            temperature_per_epoch=1e-2,
+            no_sectors=4,
+            avg_filter_type="tri",  # "rect",
+            trainable=False,
+        )
+
     def reset(self):
         self.lr = self.start_lr.clone()
         # self.butterfly_forward = ButterflyNxN(
@@ -4117,14 +4537,14 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
-        #assert self.N_phi_ave < self.butterfly_forward.num_taps     # TODO: implement for both cases
+        # assert self.N_phi_ave < self.butterfly_forward.num_taps     # TODO: implement for both cases
 
         num_samps = y.shape[1]
         # samples_per_step = self.butterfly_forward.num_taps + self.block_size
 
         out = []
         out_q = []
-        var_out=[]
+        var_out = []
         phi_plot = []
         # We start our loop already at num_taps  (because we cannot equalize the start)
         # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
@@ -4133,14 +4553,22 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         # ref_up = torch.zeros_like(y)
         # ref_up[:,::self.sps] = x[:,:y.shape[-1]//self.sps]
 
-        mod_symb_per_step_2 = self.symb_per_step%2
-        index_padding = (self.butterfly_forward.num_taps - 1) // 2 + self.cpe_window_length*self.sps
-        temp_eqIn = torch.zeros(self.N_phi_ave, y.shape[0], self.sps * self.block_size + 2*index_padding, dtype=y.dtype, device=y.device)     # shift register with dim: N_phi_ave, num. of channels, block_size*sps
+        mod_symb_per_step_2 = self.symb_per_step % 2
+        index_padding = (
+            self.butterfly_forward.num_taps - 1
+        ) // 2 + self.cpe_window_length * self.sps
+        temp_eqIn = torch.zeros(
+            self.N_phi_ave,
+            y.shape[0],
+            self.sps * self.block_size + 2 * index_padding,
+            dtype=y.dtype,
+            device=y.device,
+        )  # shift register with dim: N_phi_ave, num. of channels, block_size*sps
         # temp_phi = torch.zeros(self.N_phi_ave, dtype=y.dtype, device=y.device)
-        #temp_ref = torch.zeros(self.N_phi_ave, y.shape[0], self.block_size, dtype=y.dtype, device=y.device)
-        
-        y_pad = y #self.pad_func(y)
-        #ref_pad = self.pad_func(x)
+        # temp_ref = torch.zeros(self.N_phi_ave, y.shape[0], self.block_size, dtype=y.dtype, device=y.device)
+
+        y_pad = y  # self.pad_func(y)
+        # ref_pad = self.pad_func(x)
         # # init ref matrix
         # temp_eqIn[self.N_phi_ave//2,:,:] = y[:, 0 : self.sps * self.block_size + 2*index_padding]
         # for jj in range(0,self.N_phi_ave//2):
@@ -4162,12 +4590,14 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             # self.update_lr(self.lr * 0.5)
             # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
-                k - index_padding,   # padding already included in y_pad
-                k + self.sps * self.block_size + index_padding,   # times two since padding already included in y_pad
+                k - index_padding,  # padding already included in y_pad
+                k
+                + self.sps * self.block_size
+                + index_padding,  # times two since padding already included in y_pad
             )
             # ref_index = torch.arange(
-            #     i * self.symb_per_step + (index_padding+1)//2 + index_padding,  
-            #     i * self.symb_per_step + (index_padding+1)//2 + index_padding + self.block_size,   
+            #     i * self.symb_per_step + (index_padding+1)//2 + index_padding,
+            #     i * self.symb_per_step + (index_padding+1)//2 + index_padding + self.block_size,
             # )
 
             # for jj in range(0,self.N_phi_ave//2):
@@ -4194,12 +4624,14 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
 
             if self.use_cpe_in_training == True:
                 for cc in range(self.num_channels):
-                    y_symb[cc,:], phi_loop[cc,:] = self.cpe_in_loop(y_symb_temp[cc,:].clone())  # [0]
+                    y_symb[cc, :], phi_loop[cc, :] = self.cpe_in_loop(
+                        y_symb_temp[cc, :].clone()
+                    )  # [0]
             else:
                 y_symb = y_symb_temp
 
-            y_symb = y_symb[:, self.cpe_window_length : -self.cpe_window_length ]
-            phi_loop = phi_loop[:, self.cpe_window_length : -self.cpe_window_length ]
+            y_symb = y_symb[:, self.cpe_window_length : -self.cpe_window_length]
+            phi_loop = phi_loop[:, self.cpe_window_length : -self.cpe_window_length]
 
             if self.IQ_separate == True:
                 num_level = self.demapper.constellation.shape[-1]
@@ -4233,9 +4665,7 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             # We calculate the loss with less symbols, since the forward operation with "valid"
             # is missing some symbols
             # We assume the symbol of interest is at the center tap of the filter
-            y_index = in_index[
-                index_padding : -index_padding
-            ]
+            y_index = in_index[index_padding:-index_padding]
             loss, var = ELBO_NxN(
                 # loss, var = ELBO_DP(
                 y_pad[:, y_index],
@@ -4249,17 +4679,27 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             )
 
             if self.use_corr_avoid == True:
-                #corr_loss = torch.zeros_like(loss)
-                for kk in range(y.shape[0]):             # calculate correlation of each channel to all others
+                # corr_loss = torch.zeros_like(loss)
+                for kk in range(
+                    y.shape[0]
+                ):  # calculate correlation of each channel to all others
                     ind_corr = torch.arange(y.shape[0])
-                    ind_corr = ind_corr[ind_corr!=kk]
-                    loss += self.alpha_corr*torch.sum(torch.abs(
-                        torch.conv1d(
-                            y_symb[kk,:].unsqueeze(0),
-                            y_symb[ind_corr,y_symb.shape[-1]-self.corr_window//2:y_symb.shape[-1]+self.corr_window//2].unsqueeze(1),
-                            padding='valid',
+                    ind_corr = ind_corr[ind_corr != kk]
+                    loss += self.alpha_corr * torch.sum(
+                        torch.abs(
+                            torch.conv1d(
+                                y_symb[kk, :].unsqueeze(0),
+                                y_symb[
+                                    ind_corr,
+                                    y_symb.shape[-1]
+                                    - self.corr_window // 2 : y_symb.shape[-1]
+                                    + self.corr_window // 2,
+                                ].unsqueeze(1),
+                                padding="valid",
+                            )
                         )
-                    )**2)
+                        ** 2
+                    )
 
             # print("noise_sigma: ", self.demapper.noise_sigma)
             loss.backward()
@@ -4276,8 +4716,6 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
                     * self.demapper.noise_sigma.detach().clone(),  # torch.sqrt(var).detach()), min=0.1
                 )
 
-
-
             # # y_index = in_index[
             # #     (self.butterfly_forward.num_taps - 1)
             # #     // 2 : -((self.butterfly_forward.num_taps - 1) // 2)
@@ -4285,10 +4723,10 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             # # temp_symb = temp_symb.roll(shifts=(1), dims=(0))
             # # #ref_index = in_index[ (self.butterfly_forward.num_taps - 1) : ] + (self.butterfly_forward.num_taps + 1)*self.sps + 86
             # # temp_ref = ref_up[:,y_index]
-            # # temp_symb[0,:,:] = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again 
-            # # ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again 
+            # # temp_symb[0,:,:] = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again
+            # # ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again
             # ref = temp_ref[self.N_phi_ave//2, :, :]
-            
+
             # if self.use_cpe == True:
             #     # N_phi_ave = self.N_phi_ave
             #     phi_off = (torch.angle(y_hat) - torch.angle(temp_ref)).detach() # unwrap necessary?
@@ -4297,7 +4735,7 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             #     # for ii in range(N_phi_ave):
             #     #     y_phi_sum += torch.exp(1j*phi_off[:,ii:-(N_phi_ave-ii)])    # sum in the complex domain
             #     phi_ma = torch.angle(torch.sum(torch.exp(1j*phi_off) , dim=0) )
-            #     ref_loss = ref *torch.exp(1j*phi_ma) 
+            #     ref_loss = ref *torch.exp(1j*phi_ma)
             #     loss = self.loss_func( y_symb.real, ref_loss.real ) + self.loss_func( y_symb.imag, ref_loss.imag)
             #     # for cc in range(self.num_channels):
             #     #     ref[cc,:] *= torch.exp(1j*self.cpe(y_symb[cc,:])[1])    # rotate reference to make update independet of phase noise
@@ -4314,21 +4752,25 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             # # self.optimizer_var.zero_grad()
 
             # what about odd symbols_per_step?
-            if i==0:
-                ind_out = torch.arange( 0, (self.block_size+self.symb_per_step)//2 ) 
+            if i == 0:
+                ind_out = torch.arange(0, (self.block_size + self.symb_per_step) // 2)
             else:
-                ind_out = torch.arange( (self.block_size-self.symb_per_step)//2, (self.block_size+self.symb_per_step)//2 ) + mod_symb_per_step_2
-            
-            output_symbols =  y_symb[ #y_symb_temp[ #y_symb[
+                ind_out = (
+                    torch.arange(
+                        (self.block_size - self.symb_per_step) // 2,
+                        (self.block_size + self.symb_per_step) // 2,
+                    )
+                    + mod_symb_per_step_2
+                )
+
+            output_symbols = y_symb[  # y_symb_temp[ #y_symb[
                 :, ind_out
             ]  # - self.butterfly_forward.num_taps // 2]
             # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
             out.append(
                 output_symbols
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
-            var_out.append(
-                var
-            )
+            var_out.append(var)
 
             output_q = q_hat[:, ind_out, :]
             out_q.append(output_q)
@@ -4339,12 +4781,27 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         ###################
 
         out_const = torch.cat(out, axis=1).detach().clone()
-        out_const *= (torch.sqrt(torch.sum(self.demapper.p_symbols*torch.abs(self.demapper.constellation)**2)) / torch.sqrt(torch.mean(torch.abs(out_const)**2, dim=-1))).unsqueeze(1).repeat(1,out_const.shape[-1])
-        var_hat = torch.cat(var_out, axis=-1).view(-1,self.num_channels).detach().mean(0) / 2.0 #.clone()
+        out_const *= (
+            (
+                torch.sqrt(
+                    torch.sum(
+                        self.demapper.p_symbols
+                        * torch.abs(self.demapper.constellation) ** 2
+                    )
+                )
+                / torch.sqrt(torch.mean(torch.abs(out_const) ** 2, dim=-1))
+            )
+            .unsqueeze(1)
+            .repeat(1, out_const.shape[-1])
+        )
+        var_hat = (
+            torch.cat(var_out, axis=-1).view(-1, self.num_channels).detach().mean(0)
+            / 2.0
+        )  # .clone()
 
         if self.use_cpe == True:
             for cc in range(self.num_channels):
-                out_const[cc,:] = self.cpe(out_const[cc,:])[0]
+                out_const[cc, :] = self.cpe(out_const[cc, :])[0]
             if self.IQ_separate == True:
                 num_level = self.demapper.constellation.shape[-1]
                 q_hat = torch.zeros(
@@ -4393,7 +4850,7 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
 ##############################################################################################
 ##############################################################################################
 
- ##############################################################################################
+##############################################################################################
 ##############################################################################################
 
 
