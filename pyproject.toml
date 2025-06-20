@@ -1,6 +1,6 @@
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
 
 [tool.poetry]
 name = "mokka"
@@ -178,3 +178,55 @@ skip_install = true
 commands =
     black src tests
 """
+
+[project]
+authors = [
+    {name = "Andrej Rode", email = "rode@kit.edu"},
+    {name = "Shrinivas Chimmalgi", email = "shrinivas.chimmalgi@kit.edu"},
+    {name = "Benedikt Geiger", email = "benedikt.geiger@kit.edu"},
+    {name = "Laurent Schmalen", email = "laurent.schmalen@kit.edu"},
+]
+maintainers = [
+    {name = "Andrej Rode", email = "rode@kit.edu"},
+    {name = "Shrinivas Chimmalgi", email = "shrinivas.chimmalgi@kit.edu"},
+    {name = "Benedikt Geiger", email = "benedikt.geiger@kit.edu"},
+]
+license = {text = "Apache-2.0"}
+requires-python = "<4.0,>=3.10"
+dependencies = [
+    "attrs<24.0.0,>=23.2.0",
+    "numpy<2.0.0,>=1.26.4",
+    "torch<3.0.0,>=2.5.1",
+    "torchaudio<3.0.0,>=2.5.1",
+    "matplotlib<4.0.0,>=3.9.2",
+    "scipy<2.0.0,>=1.13.1",
+    "pyqtgraph<1.0.0,>=0.13.7",
+    "jaxtyping<1.0.0,>=0.2.36",
+]
+name = "mokka"
+readme = "README.md"
+version = "1.0.1"
+description = "A machine learning toolbox for communications engineering"
+keywords = [
+    "communications engineering",
+    "machine learning",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit",
+    "pytest",
+    "pytest-coverage",
+    "pytest-datafiles",
+    "black",
+    "flake8",
+    "pylint",
+    "python-lsp-server[all]",
+    "pyls-flake8",
+    "python-lsp-black",
+    "sphinx",
+    "sphinx-pyproject",
+    "sphinx-rtd-theme",
+    "tox",
+    "tox-gh-actions",
+]
