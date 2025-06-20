@@ -204,7 +204,6 @@ class CMloss_NxN(torch.nn.Module):
         alpha_corr=1e-4,
         corr_window=50,
         IQ_separate=False,
-        device="cpu",
         mode="valid",
     ):
         super(CMloss_NxN, self).__init__()
@@ -243,7 +242,6 @@ class CMloss_NxN(torch.nn.Module):
                     num_channels=num_channels,
                     trainable=True,
                     timedomain=True,
-                    device=device,
                     mode=mode,
                 )
         else:
@@ -252,7 +250,6 @@ class CMloss_NxN(torch.nn.Module):
                 num_channels=num_channels,
                 trainable=True,
                 timedomain=True,
-                device=device,
                 mode=mode,
             )
 
@@ -289,9 +286,8 @@ class CMloss_NxN(torch.nn.Module):
             num_channels=self.num_channels,
             trainable=True,
             timedomain=True,
-            device=self.butterfly_forward.taps.device,
             mode=self.mode,
-        )
+        ).to(self.butterfly_forward.taps.device)
         self.optimizer = torch.optim.Adam(
             self.butterfly_forward.parameters(),
             lr=self.lr,
@@ -461,7 +457,6 @@ class RDloss_NxN(torch.nn.Module):
         lr=0.5e-2,
         requires_q=False,
         IQ_separate=False,
-        device="cpu",
         mode="valid",
     ):
         super(RDloss_NxN, self).__init__()
@@ -486,7 +481,6 @@ class RDloss_NxN(torch.nn.Module):
             num_channels=num_channels,
             trainable=True,
             timedomain=True,
-            device=device,
             mode=mode,
         )
         self.demapper = demapper
@@ -507,9 +501,8 @@ class RDloss_NxN(torch.nn.Module):
             num_channels=self.num_channels,
             trainable=True,
             timedomain=True,
-            device=self.butterfly_forward.taps.device,
             mode=self.mode,
-        )
+        ).to(self.butterfly_forward.taps.device)
         self.optimizer = torch.optim.Adam(
             self.butterfly_forward.parameters(),
             lr=self.lr,
@@ -652,7 +645,6 @@ class MSEloss_NxN(torch.nn.Module):
         use_cpe=False,
         cpe_window_length=None,
         angles_per_quadrant=None,
-        device="cpu",
         mode="valid",
     ):
         super(MSEloss_NxN, self).__init__()
@@ -690,7 +682,6 @@ class MSEloss_NxN(torch.nn.Module):
             num_channels=num_channels,
             trainable=True,
             timedomain=True,
-            device=device,
             mode=mode,
         )
         self.demapper = demapper
@@ -732,9 +723,8 @@ class MSEloss_NxN(torch.nn.Module):
             num_channels=self.num_channels,
             trainable=True,
             timedomain=True,
-            device=self.butterfly_forward.taps.device,
             mode=self.mode,
-        )
+        ).to(self.butterfly_forward.taps.device)
         self.optimizer = torch.optim.Adam(
             self.butterfly_forward.parameters(),
             lr=self.lr,
@@ -977,7 +967,6 @@ class MSEflex_NxN(torch.nn.Module):
         use_cpe=False,
         cpe_window_length=None,
         angles_per_quadrant=None,
-        device="cpu",
         mode="valid",
     ):
         super(MSEflex_NxN, self).__init__()
@@ -1017,7 +1006,6 @@ class MSEflex_NxN(torch.nn.Module):
             num_channels=num_channels,
             trainable=True,
             timedomain=True,
-            device=device,
             mode=mode,
         )
         taps_ma = torch.zeros(
@@ -1025,11 +1013,10 @@ class MSEflex_NxN(torch.nn.Module):
             self.num_channels,
             self.N_phi_ave,
             dtype=torch.complex64,
-            device=device,
         )
         for ma_idx in range(self.num_channels):
             taps_ma[ma_idx, ma_idx, :] = torch.ones(
-                self.N_phi_ave, dtype=torch.complex64, device=device
+                self.N_phi_ave, dtype=torch.complex64
             )
         self.moving_ave = ButterflyNxN(
             taps=taps_ma,
@@ -1037,7 +1024,6 @@ class MSEflex_NxN(torch.nn.Module):
             num_channels=num_channels,
             trainable=False,
             timedomain=True,
-            device=device,
             mode="valid",
         )
         self.demapper = demapper
@@ -1079,9 +1065,8 @@ class MSEflex_NxN(torch.nn.Module):
             num_channels=self.num_channels,
             trainable=True,
             timedomain=True,
-            device=self.butterfly_forward.taps.device,
             mode=self.mode,
-        )
+        ).to(self.butterfly_forward.taps.device)
         self.optimizer = torch.optim.Adam(
             self.butterfly_forward.parameters(),
             lr=self.lr,
@@ -1368,7 +1353,6 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
         requires_q=False,
         IQ_separate=False,
         use_cpe=False,
-        device="cpu",
         mode="valid",
     ):
         super(MSEflex_phiMA_NxN, self).__init__()
@@ -1400,7 +1384,6 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
             num_channels=num_channels,
             trainable=True,
             timedomain=True,
-            device=device,
             mode=mode,
         )
         self.demapper = demapper
@@ -1436,9 +1419,8 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
             num_channels=self.num_channels,
             trainable=True,
             timedomain=True,
-            device=self.butterfly_forward.taps.device,
             mode=self.mode,
-        )
+        ).to(self.butterfly_forward.taps.device)
         self.optimizer = torch.optim.Adam(
             self.butterfly_forward.parameters(),
             lr=self.lr,
@@ -1696,7 +1678,6 @@ class LMS_NxN(torch.nn.Module):
         use_cpe=False,
         cpe_window_length=None,
         angles_per_quadrant=None,
-        device="cpu",
         mode="valid",
     ):
         super(LMS_NxN, self).__init__()
@@ -1736,7 +1717,6 @@ class LMS_NxN(torch.nn.Module):
             num_channels=num_channels,
             trainable=False,
             timedomain=True,
-            device=device,
             mode=mode,
         )
         self.demapper = demapper
@@ -1769,9 +1749,8 @@ class LMS_NxN(torch.nn.Module):
             num_channels=self.num_channels,
             trainable=False,
             timedomain=True,
-            device=self.butterfly_forward.taps.device,
             mode=self.mode,
-        )
+        ).to(device=self.butterfly_forward.taps.device)
 
     def forward(self, y, x):
         # We need to produce enough q values on each forward pass such that we can
@@ -2542,7 +2521,6 @@ class VAE_LE_DP_IQ(torch.nn.Module):
         lr=0.5e-2,
         requires_q=False,
         var_from_estimate=False,
-        device="cpu",
     ):
         super(VAE_LE_DP_IQ, self).__init__()
 
@@ -2555,7 +2533,7 @@ class VAE_LE_DP_IQ(torch.nn.Module):
         self.register_buffer("requires_q", torch.as_tensor(requires_q))
         self.register_buffer("var_from_estimate", torch.as_tensor(var_from_estimate))
         self.butterfly_forward = Butterfly2x2(
-            num_taps=num_taps_forward, trainable=True, timedomain=True, device=device
+            num_taps=num_taps_forward, trainable=True, timedomain=True
         )
         pol = 2  # dual-polarization
         self.h_est = torch.zeros(
@@ -2583,8 +2561,7 @@ class VAE_LE_DP_IQ(torch.nn.Module):
             num_taps=self.num_taps_forward.item(),
             trainable=True,
             timedomain=True,
-            device=self.butterfly_forward.taps.device,
-        )
+        ).to(self.butterfly_forward.taps.device)
         pol = 2  # dual-polarization
         self.h_est = torch.zeros(
             [pol, pol, 2, self.num_taps_backward]
@@ -2845,7 +2822,6 @@ class VAE_LE_NxN(torch.nn.Module):
                     num_channels=num_channels,
                     trainable=True,
                     timedomain=True,
-                    device=device,
                     mode=mode,
                 )
         else:
@@ -2854,7 +2830,6 @@ class VAE_LE_NxN(torch.nn.Module):
                 num_channels=num_channels,
                 trainable=True,
                 timedomain=True,
-                device=device,
                 mode=mode,
             )
         ########## Estimator ############
@@ -2869,7 +2844,6 @@ class VAE_LE_NxN(torch.nn.Module):
                     num_channels=num_channels,
                     trainable=True,
                     timedomain=True,
-                    device=device,
                     mode=mode,
                 )
         else:
@@ -2877,7 +2851,6 @@ class VAE_LE_NxN(torch.nn.Module):
                 taps=taps_EST,
                 trainable=True,
                 timedomain=True,
-                device=device,
                 mode=mode,
             )
         #######################
@@ -3307,7 +3280,6 @@ class VAE_LE_NxN_orig(torch.nn.Module):
         cpe_train_window_length=None,
         temperature_per_epoch=None,
         angles_per_quadrant=None,
-        device="cpu",
         mode="valid",
     ):
         super(VAE_LE_NxN_orig, self).__init__()
@@ -3370,7 +3342,6 @@ class VAE_LE_NxN_orig(torch.nn.Module):
                     num_channels=num_channels,
                     trainable=True,
                     timedomain=True,
-                    device=device,
                     mode=mode,
                 )
         else:
@@ -3379,7 +3350,6 @@ class VAE_LE_NxN_orig(torch.nn.Module):
                 num_channels=num_channels,
                 trainable=True,
                 timedomain=True,
-                device=device,
                 mode=mode,
             )
         ########## Estimator ############
@@ -3394,7 +3364,6 @@ class VAE_LE_NxN_orig(torch.nn.Module):
                     num_channels=num_channels,
                     trainable=True,
                     timedomain=True,
-                    device=device,
                     mode=mode,
                 )
         else:
@@ -3402,7 +3371,6 @@ class VAE_LE_NxN_orig(torch.nn.Module):
                 taps=taps_EST,
                 trainable=True,
                 timedomain=True,
-                device=device,
                 mode=mode,
             )
         #######################
@@ -3487,7 +3455,6 @@ class VAE_LE_NxN_orig(torch.nn.Module):
         #     num_channels=self.num_channels,
         #     trainable=True,
         #     timedomain=True,
-        #     device=self.butterfly_forward.taps.device,
         #     mode=self.mode,
         # )
         # self.butterfly_backward = ButterflyNxN(
@@ -3495,7 +3462,6 @@ class VAE_LE_NxN_orig(torch.nn.Module):
         #     num_channels=self.num_channels.item(),
         #     trainable=True,
         #     timedomain=True,
-        #     device=self.butterfly_forward.taps.device,
         #     mode=self.mode,
         # )
         self.optimizer = torch.optim.Adam(
@@ -3812,7 +3778,6 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         use_cpe_in_training=False,
         cpe_window_length=None,
         angles_per_quadrant=None,
-        device="cpu",
         mode="valid",
     ):
         super(VAE_LE_flex_NxN, self).__init__()
@@ -3866,7 +3831,6 @@ class VAE_LE_flex_NxN(torch.nn.Module):
                     num_channels=num_channels,
                     trainable=True,
                     timedomain=True,
-                    device=device,
                     mode=mode,
                 )
                 self.pad_func = torch.nn.ConstantPad1d((num_taps_EQ - 1) // 2, 0)
@@ -3876,7 +3840,6 @@ class VAE_LE_flex_NxN(torch.nn.Module):
                 num_channels=num_channels,
                 trainable=True,
                 timedomain=True,
-                device=device,
                 mode=mode,
             )
             self.pad_func = torch.nn.ConstantPad1d((taps_EQ.shape[-1] - 1) // 2, 0)
@@ -3892,7 +3855,6 @@ class VAE_LE_flex_NxN(torch.nn.Module):
                     num_channels=num_channels,
                     trainable=True,
                     timedomain=True,
-                    device=device,
                     mode=mode,
                 )
         else:
@@ -3900,7 +3862,6 @@ class VAE_LE_flex_NxN(torch.nn.Module):
                 taps=taps_EST,
                 trainable=True,
                 timedomain=True,
-                device=device,
                 mode=mode,
             )
         #######################
@@ -3909,11 +3870,10 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             self.num_channels,
             self.N_phi_ave,
             dtype=torch.complex64,
-            device=device,
         )
         for ma_idx in range(self.num_channels):
             taps_ma[ma_idx, ma_idx, :] = torch.ones(
-                self.N_phi_ave, dtype=torch.complex64, device=device
+                self.N_phi_ave, dtype=torch.complex64
             )
         self.moving_ave = ButterflyNxN(
             taps=taps_ma,
@@ -3921,7 +3881,6 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             num_channels=num_channels,
             trainable=False,
             timedomain=True,
-            device=device,
             mode="valid",
         )
 
@@ -4342,7 +4301,6 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         use_cpe_in_training=False,
         cpe_window_length=None,
         angles_per_quadrant=None,
-        device="cpu",
         mode="valid",
     ):
         super(VAE_LE_overhead_NxN, self).__init__()
@@ -4396,7 +4354,6 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
                     num_channels=num_channels,
                     trainable=True,
                     timedomain=True,
-                    device=device,
                     mode=mode,
                 )
                 self.pad_func = torch.nn.ConstantPad1d((num_taps_EQ - 1) // 2, 0)
@@ -4406,7 +4363,6 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
                 num_channels=num_channels,
                 trainable=True,
                 timedomain=True,
-                device=device,
                 mode=mode,
             )
             self.pad_func = torch.nn.ConstantPad1d(
@@ -4424,7 +4380,6 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
                     num_channels=num_channels,
                     trainable=True,
                     timedomain=True,
-                    device=device,
                     mode=mode,
                 )
         else:
@@ -4432,7 +4387,6 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
                 taps=taps_EST,
                 trainable=True,
                 timedomain=True,
-                device=device,
                 mode=mode,
             )
         #######################
@@ -4441,11 +4395,10 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             self.num_channels,
             self.N_phi_ave,
             dtype=torch.complex64,
-            device=device,
         )
         for ma_idx in range(self.num_channels):
             taps_ma[ma_idx, ma_idx, :] = torch.ones(
-                self.N_phi_ave, dtype=torch.complex64, device=device
+                self.N_phi_ave, dtype=torch.complex64
             )
         self.moving_ave = ButterflyNxN(
             taps=taps_ma,
@@ -4453,9 +4406,8 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             num_channels=num_channels,
             trainable=False,
             timedomain=True,
-            device=device,
             mode="valid",
-        )
+        ).to(taps_ma.device)
 
         self.demapper = demapper
         self.optimizer = torch.optim.Adam(
@@ -4979,7 +4931,6 @@ class VQVAE_LE_DP(torch.nn.Module):
         beta=30,
         requires_q=False,
         IQ_separate=False,
-        device="cpu",
     ):
         super(VQVAE_LE_DP, self).__init__()
 
@@ -4993,10 +4944,10 @@ class VQVAE_LE_DP(torch.nn.Module):
         self.register_buffer("requires_q", torch.as_tensor(requires_q))
         self.register_buffer("IQ_separate", torch.as_tensor(IQ_separate))
         self.butterfly_forward = Butterfly2x2(
-            num_taps=num_taps_forward, trainable=True, timedomain=True, device=device
+            num_taps=num_taps_forward, trainable=True, timedomain=True
         )
         self.butterfly_backward = Butterfly2x2(
-            num_taps=num_taps_backward, trainable=True, timedomain=True, device=device
+            num_taps=num_taps_backward, trainable=True, timedomain=True
         )
         self.demapper = demapper
         self.optimizer = torch.optim.Adam(
@@ -5019,14 +4970,12 @@ class VQVAE_LE_DP(torch.nn.Module):
             num_taps=self.num_taps_forward.item(),
             trainable=True,
             timedomain=True,
-            device=self.butterfly_forward.taps.device,
-        )
+        ).to(self.butterfly_forward.taps.device)
         self.butterfly_backward = Butterfly2x2(
             num_taps=self.num_taps_backward.item(),
             trainable=True,
             timedomain=True,
-            device=self.butterfly_forward.taps.device,
-        )
+        ).to(self.butterfly_forward.taps.device)
         self.optimizer = torch.optim.Adam(
             self.butterfly_forward.parameters(),
             lr=self.lr,
