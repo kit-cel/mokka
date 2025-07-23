@@ -76,7 +76,7 @@ python =
 [testenv]
 # install pytest in the virtualenv where commands will be executed
 allowlist_externals =
-    poetry
+    uv
     bash
 setenv =
     PYTHONUNBUFFERED = yes
@@ -90,10 +90,10 @@ extras =
 # see https://tox.readthedocs.io/en/latest/config.html#conf-usedevelop
 usedevelop = False
 commands_pre =
-    poetry env use {[tox]py_version}
-    poetry install --with=dev
+    uv venv --python {[tox]py_version}
+    uv sync --dev --all-extras
 command =
-    poetry run pytest {env:PYTEST_MARKERS:} {env:PYTEST_EXTRA_ARGS:} {posargs:-vv}
+    uv run pytest {env:PYTEST_MARKERS:} {env:PYTEST_EXTRA_ARGS:} {posargs:-vv}
 
 [testenv:flake8]
 description = this environments checks for flake8 and black
