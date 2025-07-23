@@ -91,7 +91,7 @@ extras =
 usedevelop = False
 commands_pre =
     uv venv --python {[tox]py_version}
-    uv sync --dev --all-extras
+    uv sync --dev --all-extras --active
 command =
     uv run pytest {env:PYTEST_MARKERS:} {env:PYTEST_EXTRA_ARGS:} {posargs:-vv}
 
