@@ -150,6 +150,7 @@ def test_SSFM_dualpol_circular():
         length_span,
         num_span,
         solution_method="circular",
+        amp=amp,
     )
     x1 = torch.zeros(num_samples, dtype=torch.complex64)
     x2 = torch.zeros(num_samples, dtype=torch.complex64)
