@@ -148,7 +148,7 @@ dependencies = [
 ]
 name = "mokka"
 readme = "README.md"
-version = "1.0.1"
+version = "1.1.0"
 description = "A machine learning toolbox for communications engineering"
 keywords = [
     "communications engineering",
