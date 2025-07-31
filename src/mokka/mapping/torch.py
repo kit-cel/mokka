@@ -4,6 +4,7 @@ from .. import normalization, functional
 from .numpy import QAM
 from ..utils.bitops.torch import bits_to_onehot
 from ..utils.generators.numpy import generate_all_bits
+from ..functional.torch import distribution_quantization
 from . import numpy as classical
 import torch
 import logging
@@ -1139,6 +1140,83 @@ class MBPCSSampler(torch.nn.Module):
         else:
             logit = self.logits
         return logit
+
+
+class ImportanceSampler(torch.nn.Module):
+    """
+    Apply the concept of importance sampling to optimize an input distribution
+
+    :params m: bits per symbol
+    :params l_init: Initial values for the per-symbol logits
+    :param symmetries: number of times the probabilty vector is repeated to
+                       obtain a probability distribution with uniform distribution
+                       for certain bits in the bitstring.
+    """
+
+    def __init__(self, m, batch_size, p_init=None, symmetries=0, pcs_extra_params=None):
+        """Construct ImportanceSampler."""
+        super(ImportanceSampler, self).__init__()
+        batch_size = torch.as_tensor(batch_size)
+        self.m = torch.tensor(m, dtype=torch.float32)
+        # Calculate Q = Approx(P, N)
+        # Setup trainable weights W = P/Q
+        if p_init is None:
+            P = torch.ones(2 ** int(self.m.item())) / (2 ** int(self.m.item()))
+        else:
+            P = p_init.detach()
+        symbol_dist = distribution_quantization(P, batch_size)
+        Q = symbol_dist / batch_size  # Initial distribution
+        w_init = P / Q
+        self.register_parameter("W", torch.nn.Parameter(w_init))
+        self.register_buffer("Q", Q.detach())
+        self.register_buffer("P", P.detach())
+        self.register_buffer("batch_size", batch_size.detach())
+        self.register_buffer("symbol_dist", symbol_dist.detach().long())
+        self.register_buffer(
+            "batch_idxs",
+            torch.repeat_interleave(
+                torch.arange(2 ** self.m.item()).long(), self.symbol_dist
+            ),
+        )
+        self.relu = torch.nn.ReLU()
+
+    def forward(self, batchsize, *args):
+        """
+        Generate symbol indices.
+
+        :params batchsize: Number of indices to generate
+        """
+        batchsize = torch.as_tensor(batchsize)
+        if batchsize != self.batch_size:
+            # Recompute values, reset W, P, Q
+            with torch.no_grad():
+                self.batch_size = batchsize.detach()
+                self.P = self.relu(self.W) * self.Q
+                self.P = self.P / torch.sum(self.P)
+                print(self.P)
+                self.symbol_dist = distribution_quantization(
+                    self.P, self.batch_size
+                ).long()
+                self.Q = self.symbol_dist / self.batch_size
+                self.W.data = self.P / self.Q
+                self.batch_idxs = torch.repeat_interleave(
+                    torch.arange(2 ** self.m.item()), self.symbol_dist
+                )
+
+        idx = self.batch_idxs[
+            torch.randperm(self.batch_size, device=self.batch_idxs.device)
+        ]
+        W_tilde = self.relu(self.W)
+        self.P = W_tilde * self.Q
+        self.P = self.P / torch.sum(self.P)
+        logger.debug("idx: %s", idx)
+        return idx.squeeze()
+
+    def p_symbols(self, *args):
+        """Return current probability distribution."""
+        # This returns the underlying probability distribution -> during training
+        # the adjustment in W is reflected in P, but not in Q
+        return self.P
 
 
 def MB_dist(lmbd, symbols):
