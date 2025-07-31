@@ -1146,15 +1146,16 @@ class ImportanceSampler(torch.nn.Module):
     """
     Apply the concept of importance sampling to optimize an input distribution
 
-    :params m: bits per symbol
-    :params l_init: Initial values for the per-symbol logits
-    :param symmetries: number of times the probabilty vector is repeated to
-                       obtain a probability distribution with uniform distribution
-                       for certain bits in the bitstring.
     """
 
-    def __init__(self, m, batch_size, p_init=None, symmetries=0, pcs_extra_params=None):
-        """Construct ImportanceSampler."""
+    def __init__(self, m, batch_size, p_init=None):
+        """
+        Construct ImportanceSampler.
+
+        :params m: bits per symbol
+        :params batch_size: Initial batch_size to precompute internal variables
+        :params p_init: Initialization for symbol probability distribution
+        """
         super(ImportanceSampler, self).__init__()
         batch_size = torch.as_tensor(batch_size)
         self.m = torch.tensor(m, dtype=torch.float32)
@@ -1164,7 +1165,7 @@ class ImportanceSampler(torch.nn.Module):
             P = torch.ones(2 ** int(self.m.item())) / (2 ** int(self.m.item()))
         else:
             P = p_init.detach()
-        symbol_dist = distribution_quantization(P, batch_size)
+        symbol_dist = distribution_quantization(P, batch_size, min_n=1)
         Q = symbol_dist / batch_size  # Initial distribution
         w_init = P / Q
         self.register_parameter("W", torch.nn.Parameter(w_init))
@@ -1182,7 +1183,9 @@ class ImportanceSampler(torch.nn.Module):
 
     def forward(self, batchsize, *args):
         """
-        Generate symbol indices.
+        Generate symbol indices based on importance sampling.
+
+        If the batchsize does not match a previous batch size it recomputes P, Q, and W
 
         :params batchsize: Number of indices to generate
         """
@@ -1195,7 +1198,7 @@ class ImportanceSampler(torch.nn.Module):
                 self.P = self.P / torch.sum(self.P)
                 print(self.P)
                 self.symbol_dist = distribution_quantization(
-                    self.P, self.batch_size
+                    self.P, self.batch_size, min_n=1
                 ).long()
                 self.Q = self.symbol_dist / self.batch_size
                 self.W.data = self.P / self.Q
