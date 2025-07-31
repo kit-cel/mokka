@@ -1196,7 +1196,6 @@ class ImportanceSampler(torch.nn.Module):
                 self.batch_size = batchsize.detach()
                 self.P = self.relu(self.W) * self.Q
                 self.P = self.P / torch.sum(self.P)
-                print(self.P)
                 self.symbol_dist = distribution_quantization(
                     self.P, self.batch_size, min_n=1
                 ).long()
