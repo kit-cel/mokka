@@ -72,7 +72,7 @@ def convolve_overlap_save(signal, kernel, mode="full"):
     return output_signal
 
 
-def distribution_quantization(probs, n):
+def distribution_quantization(probs, n, min_n=None):
     """
     Compute a quantized distribution for given probabilities.
 
@@ -84,7 +84,11 @@ def distribution_quantization(probs, n):
     :returns: number of ocurrences for each element in the sequence.
 
     """
-    c = torch.floor(probs * n)
+    if min_n is None:
+        c = torch.floor(probs * n)
+    else:
+        min_n = torch.as_tensor(min_n)
+        c = torch.maximum(torch.floor(probs * n), min_n)
     k = c + 1
     klogk = k * torch.log(k)
     clogc = c * torch.log(c)
