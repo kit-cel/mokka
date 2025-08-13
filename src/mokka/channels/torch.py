@@ -1888,6 +1888,7 @@ class PMDPDLChannel(torch.nn.Module):
         method="freq",
         trainable=False,
         angles=False,
+        rotation=True,
     ):
         """
         Initialize :py:class:`PMDPDLChannel`.
@@ -1967,6 +1968,7 @@ class PMDPDLChannel(torch.nn.Module):
         self.betapa = torch.zeros((3,), dtype=torch.complex64)
         self.betapb = torch.zeros((3,), dtype=torch.complex64)
         self.method = method
+        self.rotation = rotation
 
     def step(self):
         """Propagate the PMD Elements in time.
@@ -2075,15 +2077,19 @@ class PMDPDLChannel(torch.nn.Module):
             h11 = torch.exp(ha_basis * self.dz)
             h22 = torch.exp(hb_basis * self.dz)
             u_f = u_f * torch.stack((h11, h22))
-            u_f = pmd_element(u_f)
+            if self.rotation:
+                u_f = pmd_element(u_f)
         return u_f
 
-    def channel_transfer(self, length, pulse_shape=None):
+    def channel_transfer(
+        self, length, pulse_shape=None, per_step=False, sample_interval=1
+    ):
         """
         Compute the 2x2 channel transfer function.
 
         :param length: One-sided length of the desired impulse response
         :param pulse_shape: Shaping to apply to the window function
+        :param per_step: Return channel_transfer function after each step
         """
         phase_shift = 2 * torch.pi * torch.fft.fftfreq(length, 1) * (length // 2 + 1)
         u_f = torch.zeros((2, length), dtype=torch.complex64)
@@ -2092,8 +2098,22 @@ class PMDPDLChannel(torch.nn.Module):
         )
         if pulse_shape is not None:
             u_f = u_f * pulse_shape.unsqueeze(0)
-        h_x = self._forward_freq(u_f)
-        h_y = self._forward_freq(torch.flip(u_f, dims=(0,)))
+        total_steps = self.num_steps
+        if per_step:
+            h_x_total = []
+            h_y_total = []
+            for num_steps in range(1, total_steps + 1, sample_interval):
+                self.num_steps = num_steps
+                h_x = self._forward_freq(u_f)
+                h_y = self._forward_freq(torch.flip(u_f, dims=(0,)))
+                h_x_total.append(h_x)
+                h_y_total.append(h_y)
+            h_x = torch.stack(h_x_total, dim=1)
+            h_y = torch.stack(h_y_total, dim=1)
+        else:
+            h_x = self._forward_freq(u_f)
+            h_y = self._forward_freq(torch.flip(u_f, dims=(0,)))
+
         return torch.cat((h_x, h_y), dim=0)
 
 

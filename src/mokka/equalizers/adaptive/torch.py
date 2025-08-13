@@ -680,6 +680,8 @@ class PilotAEQ_DP(torch.nn.Module):
                 + torch.sqrt(1.0 - torch.as_tensor(self.lmszf_weight))
                 * self.pilot_sequence_up.clone()
             )
+        elif eq_method in ("noise"):
+            regression_seq = torch.zeros_like(self.pilot_sequence_up).normal_()
         for i, k in enumerate(range(equalizer_length, num_samp - 1, self.sps)):
             # i counts the actual loop number
             # k starts at equalizer_length
@@ -706,6 +708,11 @@ class PilotAEQ_DP(torch.nn.Module):
                             + torch.sqrt(1.0 - torch.as_tensor(self.lmszf_weight))
                             * self.pilot_sequence_up.clone()
                         )
+
+                    elif self.method in ("noise"):
+                        regression_seq = torch.zeros_like(
+                            self.pilot_sequence_up
+                        ).normal_()
                 if i == self.preeq_offset:
                     lr = self.lr
 
