@@ -1,4 +1,5 @@
 """This sub-module provides decorators for use in mokka."""
+
 import functools
 import inspect
 import warnings

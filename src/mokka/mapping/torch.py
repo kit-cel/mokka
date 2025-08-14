@@ -998,12 +998,8 @@ class PCSSampler(torch.nn.Module):
         self.register_buffer("symmetries", torch.tensor(symmetries))
         self.register_buffer("pcs_extra_params", torch.tensor(pcs_extra_params or []))
         if pcs_extra_params:
-            self.map1 = torch.nn.Linear(
-                len(pcs_extra_params), 2**m // 2**symmetries
-            )
-            self.map2 = torch.nn.Linear(
-                2**m // 2**symmetries, 2**m // 2**symmetries
-            )
+            self.map1 = torch.nn.Linear(len(pcs_extra_params), 2**m // 2**symmetries)
+            self.map2 = torch.nn.Linear(2**m // 2**symmetries, 2**m // 2**symmetries)
             torch.nn.init.xavier_normal_(self.map1.weight)
             torch.nn.init.xavier_normal_(self.map2.weight)
         else:
