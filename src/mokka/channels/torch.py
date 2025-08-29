@@ -442,7 +442,7 @@ class EDFAAmpDualPol(torch.nn.Module):
                 nsp = F_n / 2 * gain_power / (gain_power - 1)
 
                 p_rho_ase = nsp * (gain_power - 1) * hf
-                P_n_ase = 2 * p_rho_ase * self.bw
+                P_n_ase = p_rho_ase * self.bw / 2
                 logger.debug("bw: %s", self.bw)
                 logger.debug("nsp: %s", nsp)
                 logger.debug("P_n: %s", P_n_ase)
@@ -1405,7 +1405,10 @@ class WDMDemux(torch.nn.Module):
                 * torch.arange(signal.shape[0])
             )
             signal_down = downsample(
-                self.n_down, signal_shifted, filter_len, filter_gain=self.n_down
+                self.n_down,
+                signal_shifted,
+                filter_len,
+                filter_gain=np.sqrt(self.n_down),
             ).unsqueeze(0)
             results.append(signal_down)
         results = torch.cat(results, dim=0)
