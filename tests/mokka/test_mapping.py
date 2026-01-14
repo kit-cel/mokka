@@ -37,7 +37,7 @@ def test_regular_constellation_mapper_random():
 
 def test_regular_constellation_mapper_qaminit():
     m = 4
-    mapper = mapping.torch.ConstellationMapper(m, qam_init=True)
+    mapper = mapping.torch.ConstellationMapper(m, initialization="QAM")
     symbols = mapper.get_constellation().detach().numpy().flatten()
     reference_symbols = mapping.numpy.QAM(m).get_constellation().flatten()
     assert np.allclose(symbols, reference_symbols)
@@ -129,8 +129,7 @@ def test_classical_demapper_symbolwise():
     demapper = mapping.torch.ClassicalDemapper(
         sigma, mapper.get_constellation().flatten(), bitwise=False
     )
-    q_value = demapper(symbols)
-    print(q_value)
+    q_value = demapper(symbols, with_logit=False)
     rx_onehot = (q_value.detach().numpy() >= 1.0000e-5).astype(float)
     assert np.allclose(onehot, rx_onehot)
 

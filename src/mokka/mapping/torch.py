@@ -209,16 +209,18 @@ class ConstellationMapper(torch.nn.Module):
         if initialization == "r_phi_PSK":
             self.r = m[0]
             self.phi = m[1]
-            self.m = self.r+self.phi
-            # self.register_buffer("m", torch.tensor(m))
+            self.register_buffer("m", torch.as_tensor(self.r + self.phi))
         else:
-            self.m = m
-            # self.register_buffer("m", torch.tensor(m))
+            self.register_buffer("m", torch.as_tensor(m))
         self.register_buffer("mod_extra_params", torch.tensor(mod_extra_params or []))
         self.register_buffer("center_constellation", torch.tensor(center_constellation))
-        self.register_buffer("normalize_constellation", torch.tensor(normalize_constellation))
+        self.register_buffer(
+            "normalize_constellation", torch.tensor(normalize_constellation)
+        )
         # Mapper
-        self.map1 = torch.nn.Linear(max(len(mod_extra_params or []), 1), 2 ** (self.m + 1))
+        self.map1 = torch.nn.Linear(
+            max(len(mod_extra_params or []), 1), 2 ** (self.m + 1)
+        )
         self.map2 = torch.nn.Linear(2 ** (self.m + 1), 2 ** (self.m + 1))
         self.register_buffer("p_symbols", torch.full((2**self.m,), 1.0 / (2**self.m)))
         if initialization:
@@ -230,8 +232,10 @@ class ConstellationMapper(torch.nn.Module):
                 elif (initialization == "QAM") or (initialization == True):
                     symbols = QAM(m).get_constellation().flatten()
                 else:
-                    ValueError('Please provide a valid initialization: Possible initalizations as Gray mapped PSK ("PSK"), \
-                               Gray Mapped Multi-Ring PSK ("r_phi_PSK") or Gray mapped QAM constellation ("True"/"QAM")')
+                    ValueError(
+                        'Please provide a valid initialization: Possible initalizations as Gray mapped PSK ("PSK"), \
+                               Gray Mapped Multi-Ring PSK ("r_phi_PSK") or Gray mapped QAM constellation ("True"/"QAM")'
+                    )
                 self.map1.weight.zero_()
                 self.map1.bias.fill_(1)
                 self.map2.weight = torch.nn.Parameter(
@@ -269,18 +273,17 @@ class ConstellationMapper(torch.nn.Module):
             B_hot = bits_to_onehot(b)
         logger.debug("len args: %s", len(args))
         logger.debug("args: %s", args)
-        # if len(self.mod_extra_params):
-        #     # Concatenate arguments along batch_axis
-        #     mod_args = (
-        #         torch.stack(
-        #             tuple(args[idx] for idx in self.mod_extra_params),
-        #             dim=1,
-        #         )
-        #         .to(device)
-        #         .squeeze(2)
-        #     )
-        #     # Generate Constellation mapping c of size 2**m
-        #     # c = self.ReLU(self.map1(snr_dB))
+        if len(self.mod_extra_params):
+            # Concatenate arguments along batch_axis
+            mod_args = (
+                torch.stack(
+                    tuple(args[idx] for idx in self.mod_extra_params),
+                    dim=1,
+                ).to(device)
+                # .squeeze(2)
+            )
+            # Generate Constellation mapping c of size 2**m
+            # c = self.ReLU(self.map1(snr_dB))
         # else:
         #     # Just feed the network with zeros which will zero
         #     # influence of weights of first layer
@@ -320,42 +323,32 @@ class ConstellationMapper(torch.nn.Module):
         :returns: tensor of constellation points
         """
         # Test bits
-        mod_args = torch.as_tensor(args, dtype=torch.float32, device=self.map1.weight.device)
-        # print(mod_args)
-        # mod_args = mod_args.repeat(2 ** self.m.item(), 1).split(1, dim=-1)
+        # mod_args = torch.as_tensor(args, dtype=torch.float32, device=self.map1.weight.device)
+
         B = generate_all_bits(self.m.item()).copy()
         bits = torch.from_numpy(B.copy()).to(self.map1.weight.device)
         logger.debug("bits device: %s", bits.device)
         if len(self.mod_extra_params):
-            # Concatenate arguments along batch_axis
-            # print(args)
-            # print(args.ndim)
-            # mod_args = (
-            #     torch.stack(
-            #         tuple(args[idx] for idx in self.mod_extra_params),
-            #         dim=1,
-            #     )
-            #     .to(bits.device)
-            #     .squeeze(2)
-            # )
-            # print("Hi")
-            # print(mod_args)
+            mod_args = (
+                torch.stack(
+                    tuple(args[idx] for idx in self.mod_extra_params),
+                    dim=1,
+                ).to(bits.device)
+                # .squeeze(2)
+            )
             c = self.ReLU(self.map1(mod_args))
             c = self.map2(c)
-            c = torch.view_as_complex(torch.reshape(c, (2 ** self.m, 2)))
-            # To-Do: Need to fix this
-            # Generate Constellation mapping c of size 2**m
-            # c = self.ReLU(self.map1(snr_dB))
+            c = torch.view_as_complex(torch.reshape(c, (-1, 2**self.m, 2)))
+            if self.center_constellation:
+                c = normalization.center_constellation(c, self.p_symbols[None, :])
         else:
-            # Just feed the network with zeros which will zero
-            # influence of weights of first layer
-            # and only train bias
             mod_args = torch.zeros((1,), device=bits.device)
             c = self.ReLU(self.map1(mod_args))
             c = self.map2(c)
-            c = torch.view_as_complex(torch.reshape(c, (2 ** self.m, 2)))
-        if self.center_constellation:
-            c = normalization.center_constellation(c, self.p_symbols)
+            c = torch.view_as_complex(torch.reshape(c, (2**self.m, 2)))
+            if self.center_constellation:
+                c = normalization.center_constellation(c, self.p_symbols)
+
         if self.normalize_constellation:
             c = normalization.normalize_constellation(c, self.p_symbols)
         # out = self.forward(bits, *mod_args).flatten()
@@ -576,9 +569,13 @@ class ConstellationDemapper(torch.nn.Module):
         # Feed received symbols into decoder network
         if len(self.demod_extra_params):
             # Input is y: (batchsize x symbols per snr), snr: (batchsize x 1)
-            y = torch.cat(
-                (y, torch.cat(args[self.demod_extra_params].split(1, -1), 1)),
-                1,
+            y = torch.stack(
+                (
+                    y[:, 0],
+                    y[:, 1],
+                    torch.cat(args[self.demod_extra_params].split(1, -1), -1),
+                ),
+                -1,
             )
         for demap in self.demaps[:-1]:
             y = demap(y)
@@ -638,10 +635,16 @@ class ClassicalDemapper(torch.nn.Module):
     :param optimize: Use $\\sigma$ as trainable paramater
     :param bitwise: Perform demapping bitwise returning LLRs
     :param p_symbols: PyTorch tensor with symbol probabilities
+    :param with_logit: Return logits instead of probabilities
     """
 
     def __init__(
-        self, noise_sigma, constellation, optimize=False, bitwise=True, p_symbols=None
+        self,
+        noise_sigma,
+        constellation,
+        optimize=False,
+        bitwise=True,
+        p_symbols=None,
     ):
         """Construct ClassicalDemapper."""
         super(ClassicalDemapper, self).__init__()
@@ -654,6 +657,7 @@ class ClassicalDemapper(torch.nn.Module):
             self.noise_sigma = torch.as_tensor(noise_sigma)
         self.constellation = constellation
         self.softmax = torch.nn.Softmax()
+        self.sigmoid = torch.nn.Sigmoid()
 
         M = torch.numel(self.constellation)
         m = int(math.log2(M))
@@ -685,7 +689,7 @@ class ClassicalDemapper(torch.nn.Module):
         """Update saved constellation."""
         self.constellation = constellation.clone()
 
-    def forward(self, y, *args):
+    def forward(self, y, *args, with_logit=True):
         """
         Perform bitwise demapping of complex symbols.
 
@@ -694,21 +698,23 @@ class ClassicalDemapper(torch.nn.Module):
         """
         if len(y.size()) < 2:
             y = y[:, None]
-        dist = (
-            torch.exp(
-                (-1 * torch.abs(y - self.constellation.to(device=y.device)) ** 2)
-                / (2 * torch.clip(self.noise_sigma.to(device=y.device), 0.001) ** 2)
-            )
-            * self.p_symbols[None, :].to(device=y.device)
-            * (2 ** self.m.to(device=y.device))
+
+        dist = torch.exp(
+            (-1 * torch.abs(y - self.constellation.to(device=y.device)) ** 2)
+            / (2 * torch.clip(self.noise_sigma.to(device=y.device), 0.001) ** 2)
         )  # batch_size x 2**m
 
         if self.bitwise:
-            return self.forward_bitwise(dist)
+            dist = (
+                dist
+                * self.p_symbols[None, :].to(device=y.device)
+                * (2 ** self.m.to(device=y.device))
+            )  # batch_size x 2**m
+            return self.forward_bitwise(dist, with_logit=with_logit)
         else:
-            return self.forward_symbolwise(dist)
+            return self.forward_symbolwise(dist, with_logit=with_logit)
 
-    def forward_bitwise(self, dist):
+    def forward_bitwise(self, dist, with_logit):
         """
         Perform bitwise demapping of complex symbols.
 
@@ -727,18 +733,22 @@ class ClassicalDemapper(torch.nn.Module):
             llrs[:, bit] = torch.squeeze(zero_llr - one_llr)
         if torch.allclose(llrs, torch.tensor(0.0)):
             raise ValueError("LLRs all became zero, convergence problem")
-        return llrs
+        if with_logit:
+            return llrs
+        return self.sigmoid(llrs)
 
-    def forward_symbolwise(self, dist, *args):
+    def forward_symbolwise(self, dist, with_logit, *args):
         """
         Perform symbolwise soft demapping of complex symbols.
 
         :params y: Received complex symbols
         :returns: q-values for each constellation symbol
         """
-        # print("dist: ", dist)
         dist = dist + 1e-8
         q = dist / torch.sum(dist, axis=1)[:, None]
+        q = dist + 1e-16
+        if with_logit:
+            return torch.log(q)
         return q
 
 
@@ -1042,12 +1052,13 @@ class CartesianPASSampler(torch.nn.Module):
                        obtain a probability distribution with uniform distribution
                        for certain bits in the bitstring.
     """
+
     def __init__(self, m, l_init=None, pcs_extra_params=None):
         """Construct PCSSampler."""
         super(CartesianPASSampler, self).__init__()
-        self.m = torch.tensor(m, dtype=torch.float32)
+        self.register_buffer("m", torch.as_tensor(m, dtype=torch.float32))
         self.symbols_per_bit = np.sqrt(2**self.m)
-        self.num_probabilites = int(self.symbols_per_bit/2)
+        self.num_probabilites = int(self.symbols_per_bit / 2)
 
         if l_init is None:
             self.logits = torch.nn.Parameter(
@@ -1059,22 +1070,29 @@ class CartesianPASSampler(torch.nn.Module):
             if l_init.shape[0] != self.num_probabilites:
                 raise ValueError("l_init must be size of 2**m/2**symmetries")
             self.logits = torch.nn.Parameter(l_init)
+            self.logitsReal = torch.nn.Parameter(l_init)
+            self.logitsImag = torch.nn.Parameter(l_init)
         self.relu = torch.nn.ReLU()
         self.softmax = torch.nn.Softmax(dim=0)
 
-        bits_qam = torch.zeros(2**(m//2), 2**(m//2), m)
-        bits_gray_1d = gray(m//2)
-        for i in range(2**(m//2)):
-            for j in range(2**(m//2)):
-                bits_qam[i,j,:] = torch.tensor(bits_gray_1d[i] + bits_gray_1d[j])
-        bits_gray_2d = torch.reshape(bits_qam,(2**m,m))
+        bits_qam = torch.zeros(2 ** (m // 2), 2 ** (m // 2), m)
+        bits_gray_1d = gray(m // 2)
+        for i in range(2 ** (m // 2)):
+            for j in range(2 ** (m // 2)):
+                bits_qam[i, j, :] = torch.tensor(bits_gray_1d[i] + bits_gray_1d[j])
+        bits_gray_2d = torch.reshape(bits_qam, (2**m, m))
 
         # Jetzt das passende Mapping finden
         all_bits = generate_all_bits(m)
 
         self.idx_lookup = torch.zeros((2**m, 1), dtype=torch.int16)
         for i in range(2**m):
-            self.idx_lookup[i] = (bits_gray_2d == torch.tensor(all_bits[i].copy())).all(axis=1).nonzero().item()
+            self.idx_lookup[i] = (
+                (bits_gray_2d == torch.tensor(all_bits[i].copy()))
+                .all(axis=1)
+                .nonzero()
+                .item()
+            )
 
     def forward(self, batchsize, *args):
         """
@@ -1102,12 +1120,36 @@ class CartesianPASSampler(torch.nn.Module):
         """Return current probability distribution."""
         logits = self.logits
         logger.debug("logits: %s", logits)
-        logits_1D = torch.cat((logits, torch.flip(logits, dims=(0,))), dim=0)
-        logits_real = torch.unsqueeze(logits_1D, dim=0)
-        logits_imag = torch.unsqueeze(logits_1D, dim=1)
-        logits_2D = torch.reshape(logits_real*logits_imag, (-1,))
-        logits_sorted = logits_2D[self.idx_lookup[torch.arange(int(2**self.m))].to(torch.long).squeeze()]
-        return self.softmax(logits_sorted).squeeze()
+        # Same Prob on x and y
+        # logits_1D = torch.cat((logits, torch.flip(logits, dims=(0,))), dim=0)
+        # probs_1D = self.softmax(logits_1D).squeeze()
+        # probs_real = torch.unsqueeze(probs_1D, dim=0)
+        # probs_imag = torch.unsqueeze(probs_1D, dim=1)
+        # probs_2D = torch.reshape(probs_real*probs_imag, (-1,))
+        # probs_sorted = probs_2D[self.idx_lookup[torch.arange(int(2**self.m))].to(torch.long).squeeze()]
+        # return probs_sorted
+        # Different prob on real and imag
+        logits_real = self.logitsReal
+        logits_imag = self.logitsImag
+        logits_real_sym = torch.cat(
+            (logits_real, torch.flip(logits_real, dims=(0,))), dim=0
+        )
+        logits_imag_sym = torch.cat(
+            (logits_imag, torch.flip(logits_imag, dims=(0,))), dim=0
+        )
+        probs_real = torch.unsqueeze(self.softmax(logits_real_sym).squeeze(), dim=0)
+        probs_imag = torch.unsqueeze(self.softmax(logits_imag_sym).squeeze(), dim=1)
+        probs_2D = torch.reshape(probs_real * probs_imag, (-1,))
+        probs_sorted = probs_2D[
+            self.idx_lookup[torch.arange(int(2**self.m))].to(torch.long).squeeze()
+        ]
+        return probs_sorted
+        # Old version multiplying the LLRs
+        # logits_real = torch.unsqueeze(logits_1D, dim=0)
+        # logits_imag = torch.unsqueeze(logits_1D, dim=1)
+        # logits_2D = torch.reshape(logits_real*logits_imag, (-1,))
+        # logits_sorted = logits_2D[self.idx_lookup[torch.arange(int(2**self.m))].to(torch.long).squeeze()]
+        # return self.softmax(logits_sorted).squeeze()
 
 
 class PolarPASSampler(torch.nn.Module):
@@ -1121,13 +1163,16 @@ class PolarPASSampler(torch.nn.Module):
         The first 2**num_bits_radial logits correspond to the radial direction
         The last 2**num_bits_phase logits correspond to the phase/angular direction
     """
+
     def __init__(self, m, l_init=None, pcs_extra_params=None):
         """Construct PCSSampler."""
         super(PolarPASSampler, self).__init__()
         self.num_bits_radial = m[0]
         self.num_bits_phase = m[1]
-        self.m = int(self.num_bits_radial+self.num_bits_phase)
-        self.symbols_per_bit = np.sqrt(2**self.m)
+        self.register_buffer(
+            "m", torch.as_tensor(self.num_bits_radial + self.num_bits_phase)
+        )
+        self.symbols_per_bit = np.sqrt(2 ** self.m.item())
         self.num_probabilites = int(2**self.num_bits_radial + 2**self.num_bits_phase)
 
         if l_init is None:
@@ -1143,20 +1188,29 @@ class PolarPASSampler(torch.nn.Module):
         self.relu = torch.nn.ReLU()
         self.softmax = torch.nn.Softmax(dim=0)
 
-        bits_r_phi_psk = torch.zeros((int(2**(self.num_bits_radial)), int(2**(self.num_bits_phase)), self.m))
+        bits_r_phi_psk = torch.zeros(
+            (int(2 ** (self.num_bits_radial)), int(2 ** (self.num_bits_phase)), self.m)
+        )
         bits_gray_radius = gray(self.num_bits_radial)
         bits_gray_angle = gray(self.num_bits_phase)
-        for i in range(2**(self.num_bits_radial)):
-            for j in range(2**(self.num_bits_phase)):
-                bits_r_phi_psk[i,j,:] = torch.tensor(bits_gray_radius[i] + bits_gray_angle[j])
-        bits_gray_2d = torch.reshape(bits_r_phi_psk,(2**self.m,self.m))
+        for i in range(2 ** (self.num_bits_radial)):
+            for j in range(2 ** (self.num_bits_phase)):
+                bits_r_phi_psk[i, j, :] = torch.tensor(
+                    bits_gray_radius[i] + bits_gray_angle[j]
+                )
+        bits_gray_2d = torch.reshape(bits_r_phi_psk, (2**self.m, self.m))
 
         # Jetzt das passende Mapping finden
         all_bits = generate_all_bits(self.m)
 
         self.idx_lookup = torch.zeros((2**self.m, 1), dtype=torch.int16)
         for i in range(2**self.m):
-            self.idx_lookup[i] = (bits_gray_2d == torch.tensor(all_bits[i].copy())).all(axis=1).nonzero().item()
+            self.idx_lookup[i] = (
+                (bits_gray_2d == torch.tensor(all_bits[i].copy()))
+                .all(axis=1)
+                .nonzero()
+                .item()
+            )
 
     def forward(self, batchsize, *args):
         """
@@ -1184,11 +1238,23 @@ class PolarPASSampler(torch.nn.Module):
         """Return current probability distribution."""
         logits = self.logits
         logger.debug("logits: %s", logits)
-        logits_radian = torch.unsqueeze(torch.flip(logits[:int(2**self.num_bits_radial)], dims=(0,)), dim=1)
-        logits_angle = torch.unsqueeze(logits[-int(2**self.num_bits_phase):], dim=0)
-        logits_2D = torch.reshape(logits_radian*logits_angle, (-1,))
-        logits_sorted = logits_2D[self.idx_lookup[torch.arange(int(2**self.m))].to(torch.long).squeeze()]
-        return self.softmax(logits_sorted).squeeze()
+        logits_radian = torch.flip(logits[: int(2**self.num_bits_radial)], dims=(0,))
+        probs_radian = torch.unsqueeze(self.softmax(logits_radian).squeeze(), dim=1)
+        probs_angle = (
+            1
+            / int(2**self.num_bits_phase)
+            * torch.ones((int(2**self.num_bits_phase),), device=self.logits.device)
+        )
+        probs_2D = torch.reshape(probs_radian * probs_angle, (-1,))
+        probs_sorted = probs_2D[
+            self.idx_lookup[torch.arange(int(2**self.m))].to(torch.long).squeeze()
+        ]
+        return probs_sorted
+        # logits_radian = torch.unsqueeze(torch.flip(logits[:int(2**self.num_bits_radial)], dims=(0,)), dim=1)
+        # logits_angle = torch.unsqueeze(logits[-int(2**self.num_bits_phase):], dim=0)
+        # logits_2D = torch.reshape(logits_radian*logits_angle, (-1,))
+        # logits_sorted = logits_2D[self.idx_lookup[torch.arange(int(2**self.m))].to(torch.long).squeeze()]
+        # return self.softmax(logits_sorted).squeeze()
 
 
 class PCSSampler(torch.nn.Module):
@@ -1201,6 +1267,7 @@ class PCSSampler(torch.nn.Module):
                        obtain a probability distribution with uniform distribution
                        for certain bits in the bitstring.
     """
+
     def __init__(self, m, l_init=None, symmetries=0, pcs_extra_params=None):
         """Construct PCSSampler."""
         super(PCSSampler, self).__init__()
@@ -1253,10 +1320,9 @@ class PCSSampler(torch.nn.Module):
         if len(self.pcs_extra_params):
             pcs_args = (
                 torch.stack(
-                    tuple(args[idx][0, None] for idx in self.pcs_extra_params), dim=1
-                )
-                .to(self.map1.weight.device)
-                .squeeze()
+                    tuple(args[idx][0, None] for idx in self.pcs_extra_params), dim=-1
+                ).to(self.map1.weight.device)
+                # .squeeze()
             )
             logits = self.map2(self.relu(self.map1(pcs_args)))
         else:

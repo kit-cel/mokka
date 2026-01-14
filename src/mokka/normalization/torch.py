@@ -58,12 +58,15 @@ def center_constellation(constellation_points, constellation_probabilities=None)
     :returns: centered complex constellation
 
     Updated by:
-    - Benedikt Geiger, 21.11.2024  
+    - Benedikt Geiger, 21.11.2024
     """
     if constellation_probabilities is not None:
-        centered_constellation_points = constellation_points - torch.sum(constellation_probabilities * constellation_points, -1)
+        mass_center = torch.sum(constellation_probabilities * constellation_points, -1)
     else:
-        centered_constellation_points = constellation_points - torch.mean(constellation_points, -1)
+        mass_center = torch.mean(constellation_points, -1)
+    if len(constellation_points.shape) > 1:
+        mass_center = mass_center.unsqueeze(1)
+    centered_constellation_points = constellation_points - mass_center
     return centered_constellation_points
 
 
@@ -75,11 +78,15 @@ def normalize_constellation(constellation_points, constellation_probabilities=No
     :returns: unit power complex constellation
 
     Updated by:
-    - Benedikt Geiger, 21.11.2024  
+    - Benedikt Geiger, 21.11.2024
     """
     if constellation_probabilities is not None:
-        power = torch.sum(constellation_probabilities * torch.abs(constellation_points)**2, -1)
+        power = torch.sum(
+            constellation_probabilities * torch.abs(constellation_points) ** 2, -1
+        )
     else:
-        power = torch.mean(torch.abs(constellation_points)**2, -1)
-    normalized_constellation = constellation_points/torch.sqrt(power)
+        power = torch.mean(torch.abs(constellation_points) ** 2, -1)
+    if len(constellation_points.shape) > 1:
+        power = power.unsqueeze(1)
+    normalized_constellation = constellation_points / torch.sqrt(power)
     return normalized_constellation

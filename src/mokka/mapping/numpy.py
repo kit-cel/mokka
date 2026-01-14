@@ -70,7 +70,7 @@ class QAM:
             ]
             output.append(real + 1j * imag)
         return np.array(output)
-    
+
 
 class PSK:
     """
@@ -91,9 +91,9 @@ class PSK:
         self.one_idx = np.nonzero(self.bit_sequence)
         self.zero_idx = np.nonzero(np.abs(self.bit_sequence - 1))
 
-        phase_step_size = 2*np.pi/(2**m)
-        self.symbol_phases = np.arange(2**m)*phase_step_size
-        self.symbols = np.exp(1j*self.symbol_phases)
+        phase_step_size = 2 * np.pi / (2**m)
+        self.symbol_phases = np.arange(2**m) * phase_step_size
+        self.symbols = np.exp(1j * self.symbol_phases)
 
     def get_constellation(self):
         """
@@ -116,8 +116,10 @@ class PSK:
         """
         output = []
         for seq in bits.reshape(-1, self.m):
-            output.append(self.symbols[(self.bit_sequence == seq).all(axis=1).nonzero()])
-        return np.array(output)        
+            output.append(
+                self.symbols[(self.bit_sequence == seq).all(axis=1).nonzero()]
+            )
+        return np.array(output)
 
 
 class r_phi_PSK:
@@ -131,26 +133,24 @@ class r_phi_PSK:
     def __init__(self, num_bits_radial, num_bits_phase):
         """Construct r_phi_PSK class."""
         if num_bits_radial % 1:
-            raise ValueError(
-                "Number of bits must be integer"
-            )
+            raise ValueError("Number of bits must be integer")
         if num_bits_phase % 1:
-            raise ValueError(
-                "Number of bits must be integer"
-            )
+            raise ValueError("Number of bits must be integer")
         self.num_bits_radial = num_bits_radial
-        self.num_radii = int(2**num_bits_radial)    
+        self.num_radii = int(2**num_bits_radial)
         self.num_bits_phase = num_bits_phase
         self.num_phases = int(2**num_bits_phase)
-        
+
         self.bit_sequence_radius = np.array(gray(num_bits_radial))
         self.bit_sequence_angle = np.array(gray(num_bits_phase))
 
         self.m = num_bits_radial + num_bits_phase
 
-        scaling = np.sqrt(6/((self.num_radii+1)*(2*self.num_radii+1)))
-        self.symbol_radii = (np.arange(self.num_radii)+1)*scaling
-        self.symbol_phases = np.arange(self.num_phases)/self.num_phases*2*np.pi
+        scaling = np.sqrt(6 / ((self.num_radii + 1) * (2 * self.num_radii + 1)))
+        self.symbol_radii = (np.arange(self.num_radii) + 1) * scaling
+        self.symbol_phases = (
+            (np.arange(self.num_phases) + 0.5) / self.num_phases * 2 * np.pi
+        )
 
     def get_constellation(self):
         """
@@ -175,10 +175,22 @@ class r_phi_PSK:
         for seq in bits.reshape(-1, self.m):
             # Take first num_bits_radial bits for amplitude and last num_bits_phase bits for phase
             amplitude = self.symbol_radii[
-                (self.bit_sequence_radius == seq[: self.num_bits_radial]).all(axis=1).nonzero() if self.num_bits_radial>0 else 0
+                (
+                    (self.bit_sequence_radius == seq[: self.num_bits_radial])
+                    .all(axis=1)
+                    .nonzero()
+                    if self.num_bits_radial > 0
+                    else 0
+                )
             ]
             phase = self.symbol_phases[
-                (self.bit_sequence_angle == seq[-self.num_bits_phase :]).all(axis=1).nonzero() if self.num_bits_phase>0 else 0
+                (
+                    (self.bit_sequence_angle == seq[-self.num_bits_phase :])
+                    .all(axis=1)
+                    .nonzero()
+                    if self.num_bits_phase > 0
+                    else 0
+                )
             ]
-            output.append(amplitude*np.exp(1j*phase))
+            output.append(amplitude * np.exp(1j * phase))
         return np.array(output)

@@ -235,7 +235,7 @@ def N0(SNR):
     return 10 ** (-SNR / 10)
 
 
-def export_constellation(output_file, constellation, probabilities):
+def export_constellation(output_file, constellation, probabilities, label_bits=False):
     """Export a constellation to a csv file.
 
     :param output_file: path to file
@@ -244,11 +244,13 @@ def export_constellation(output_file, constellation, probabilities):
     :returns:
 
     """
-    labels = bits2hex(
-        ints2bits(np.arange(len(constellation)), int(np.log2(len(constellation))))
-    )
+    labels = ints2bits(np.arange(len(constellation)), int(np.log2(len(constellation))))
+    if label_bits == True:
+        labels = bits2hex(labels)
     result = ["no\treal\timag\tprob\tlabel\n"]
-    for no, point, prob, label in zip(np.arange(len(constellation)),constellation,probabilities,labels):
+    for no, point, prob, label in zip(
+        np.arange(len(constellation)), constellation, probabilities, labels
+    ):
         result.append(f"{no}\t{point.real}\t{point.imag}\t{prob}\t{label}\n")
     with open(output_file, "w") as result_file:
         result_file.truncate()
