@@ -1,7 +1,7 @@
 """PyTorch implementation of Mappers and Demappers."""
 
 from .. import normalization, functional
-from .numpy import QAM, PSK, r_phi_PSK
+from .numpy import QAM, PSK, r_phi_PSK, PAM
 from ..utils.bitops import gray
 from ..utils.bitops.torch import bits_to_onehot
 from ..utils.generators.numpy import generate_all_bits
@@ -193,6 +193,7 @@ class ConstellationMapper(torch.nn.Module):
     :param center_constellation: Removes the mean from the constellation, i.e., ensures that E{X} = 0
     :param normalize_constellation: Normalizes the constellation to unit power, i.e., E{|X|^2} = 1
     :param initialization: Initialize the weights to form a Gray mapped PSK ("PSK"), Gray Mapped Multi-Ring PSK ("PolarPAS") or Gray mapped QAM constellation ("True"/"QAM")
+    :param complex: Use complex modulation alphabet
     """
 
     def __init__(
@@ -201,7 +202,8 @@ class ConstellationMapper(torch.nn.Module):
         mod_extra_params=None,
         center_constellation=True,
         normalize_constellation=True,
-        initialization=False,
+        initialization: str | bool = False,
+        complex=True,
     ):
         """Construct ConstellationMapper."""
         super(ConstellationMapper, self).__init__()
@@ -217,11 +219,14 @@ class ConstellationMapper(torch.nn.Module):
         self.register_buffer(
             "normalize_constellation", torch.tensor(normalize_constellation)
         )
+        self.register_buffer("complex", torch.as_tensor(1 if complex else 0))
         # Mapper
         self.map1 = torch.nn.Linear(
-            max(len(mod_extra_params or []), 1), 2 ** (self.m + 1)
+            max(len(mod_extra_params or []), 1), 2 ** (self.m + self.complex)
         )
-        self.map2 = torch.nn.Linear(2 ** (self.m + 1), 2 ** (self.m + 1))
+        self.map2 = torch.nn.Linear(
+            2 ** (self.m + self.complex), 2 ** (self.m + self.complex)
+        )
         self.register_buffer("p_symbols", torch.full((2**self.m,), 1.0 / (2**self.m)))
         if initialization:
             with torch.no_grad():
@@ -229,7 +234,9 @@ class ConstellationMapper(torch.nn.Module):
                     symbols = r_phi_PSK(self.r, self.phi).get_constellation().flatten()
                 elif initialization == "PSK":
                     symbols = PSK(m).get_constellation().flatten()
-                elif (initialization == "QAM") or (initialization == True):
+                elif initialization == "PAM":
+                    symbols = PAM(m).get_constellation().flatten()
+                elif (initialization == "QAM") or (initialization is True):
                     symbols = QAM(m).get_constellation().flatten()
                 else:
                     ValueError(
@@ -238,14 +245,27 @@ class ConstellationMapper(torch.nn.Module):
                     )
                 self.map1.weight.zero_()
                 self.map1.bias.fill_(1)
-                self.map2.weight = torch.nn.Parameter(
-                    torch.diag(
-                        torch.tensor(
-                            np.stack((symbols.real, symbols.imag), axis=-1).flatten(),
-                            dtype=torch.float32,
-                        ),
+                if self.complex:
+                    self.map2.weight = torch.nn.Parameter(
+                        torch.diag(
+                            torch.tensor(
+                                np.stack(
+                                    (symbols.real, symbols.imag), axis=-1
+                                ).flatten(),
+                                dtype=torch.float32,
+                            ),
+                        )
                     )
-                )
+                else:
+                    self.map2.weight = torch.nn.Parameter(
+                        torch.diag(
+                            torch.as_tensor(
+                                np.stack((symbols), axis=-1).flatten(),
+                                dtype=torch.float32,
+                            ),
+                        )
+                    )
+
                 self.map2.bias.zero_()
         else:
             torch.nn.init.xavier_normal_(self.map1.weight)
@@ -265,51 +285,18 @@ class ConstellationMapper(torch.nn.Module):
         """
         # Generate one-hot representatios for m bits
         # in vectors of length 2**m
-        device = b.device
         logger.debug("b size: %s", b.size())
+        # For symbolwise modulation we use one_hot input
+        # to have outside access to the values
         if one_hot:
             B_hot = b
         else:
             B_hot = bits_to_onehot(b)
         logger.debug("len args: %s", len(args))
         logger.debug("args: %s", args)
-        if len(self.mod_extra_params):
-            # Concatenate arguments along batch_axis
-            mod_args = (
-                torch.stack(
-                    tuple(args[idx] for idx in self.mod_extra_params),
-                    dim=1,
-                ).to(device)
-                # .squeeze(2)
-            )
-            # Generate Constellation mapping c of size 2**m
-            # c = self.ReLU(self.map1(snr_dB))
-        # else:
-        #     # Just feed the network with zeros which will zero
-        #     # influence of weights of first layer
-        #     # and only train bias
-        #     mod_args = torch.zeros((*b.size()[:-1], 1), device=device)
-        #     # c = self.ReLU(self.map1(torch.zeros((torch.numel(B),), device=device)))
-        #     # c = torch.unsqueeze(c, 0)
-        # logger.debug("mod_args: %s", mod_args)
-        # logger.debug("mod_args dim: %s", mod_args.size())
-        # c = self.ReLU(self.map1(mod_args))
-        # logger.debug("c size at creation: %s", c.size())
-        # c = self.map2(c)
-        # print(c.shape)
-        # if self.center_constellation:
-        #     c = normalization.center_constellation(c, self.p_symbols)
-        # if self.normalize_constellation:
-        #     c = normalization.normalize_constellation(c, self.p_symbols)
-        # logger.debug("c device: %s", c.device)
-        # logger.debug("c size after scaling: %s", c.size())
-        # logger.debug("c energy for item 0: %s", torch.abs(c[0, :]) ** 2)
-        # c = torch.view_as_complex(
-        #     torch.reshape(c, (*b.size()[:-1], 2 ** self.m.item(), 2))
-        # )
-        # Get constellation
+        # Get constellation (based on the arguments)
         c = self.get_constellation(*args)
-        # transmit (batchsize x symbols per training sample) symbols
+        # Multiply the one_hot vectors with constellation matrix selecting one symbol each
         x = torch.sum(B_hot * c, -1)
         logger.debug("x device: %s", x.device)
         return x
@@ -338,20 +325,21 @@ class ConstellationMapper(torch.nn.Module):
             )
             c = self.ReLU(self.map1(mod_args))
             c = self.map2(c)
-            c = torch.view_as_complex(torch.reshape(c, (-1, 2**self.m, 2)))
+            if self.complex:
+                c = torch.view_as_complex(torch.reshape(c, (-1, 2**self.m, 2)))
             if self.center_constellation:
                 c = normalization.center_constellation(c, self.p_symbols[None, :])
         else:
             mod_args = torch.zeros((1,), device=bits.device)
             c = self.ReLU(self.map1(mod_args))
             c = self.map2(c)
-            c = torch.view_as_complex(torch.reshape(c, (2**self.m, 2)))
+            if self.complex:
+                c = torch.view_as_complex(torch.reshape(c, (2**self.m, 2)))
             if self.center_constellation:
                 c = normalization.center_constellation(c, self.p_symbols)
 
         if self.normalize_constellation:
             c = normalization.normalize_constellation(c, self.p_symbols)
-        # out = self.forward(bits, *mod_args).flatten()
         return c
 
     @staticmethod
@@ -518,6 +506,7 @@ class ConstellationDemapper(torch.nn.Module):
     :params width: Neurons per layer
     :params with_logit: Output LLRS and not bit probabilities
     :params bitwise: Bitwise LLRs & probabilities
+    :params complex: Complex input or real-valued input
     """
 
     def __init__(
@@ -528,6 +517,7 @@ class ConstellationDemapper(torch.nn.Module):
         with_logit=True,
         bitwise=True,
         demod_extra_params=None,
+        complex=True,
     ):
         """Construct ConstellationDemapper."""
         super(ConstellationDemapper, self).__init__()
@@ -540,13 +530,14 @@ class ConstellationDemapper(torch.nn.Module):
         self.register_buffer("width", torch.as_tensor(width))
         self.register_buffer("depth", torch.as_tensor(depth))
         self.register_buffer("bitwise", torch.as_tensor(bitwise))
+        self.register_buffer("complex", torch.as_tensor(complex))
 
         self.ReLU = torch.nn.LeakyReLU()
         self.sigmoid = torch.nn.Sigmoid()
         self.softmax = torch.nn.Softmax()
 
         self.demaps = torch.nn.ModuleList()
-        input_width = 2 + len(demod_extra_params or [])
+        input_width = (2 if self.complex else 1) + len(demod_extra_params or [])
         self.demaps.append(torch.nn.Linear(input_width, width))
         for d in range(depth - 2):
             self.demaps.append(torch.nn.Linear(width, width))
@@ -564,8 +555,9 @@ class ConstellationDemapper(torch.nn.Module):
 
         :returns: Approximated log likelihood ratio of dimension `self.m`
         """
-        y = torch.view_as_real(y)
-        y = torch.squeeze(y, 1)
+        if self.complex:
+            y = torch.view_as_real(y)
+            y = torch.squeeze(y, 1)
         # Feed received symbols into decoder network
         if len(self.demod_extra_params):
             # Input is y: (batchsize x symbols per snr), snr: (batchsize x 1)
@@ -577,6 +569,9 @@ class ConstellationDemapper(torch.nn.Module):
                 ),
                 -1,
             )
+        # y = torch.atleast_2d(y)
+        if y.ndim == 1:
+            y = y[:, None]
         for demap in self.demaps[:-1]:
             y = demap(y)
             y = self.ReLU(y)

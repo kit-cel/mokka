@@ -194,3 +194,26 @@ class r_phi_PSK:
             ]
             output.append(amplitude * np.exp(1j * phase))
         return np.array(output)
+
+
+class PAM:
+    def __init__(self, m: int):
+        self.m = m
+        # Solving the square series and dividing by the number of elements
+        scaling = 1.0 / np.sqrt(1 / (6 * (2**m - 1)) * (2 ** (m + 1) - 1))
+        # scaling = 1
+        self.symbols = np.linspace(0, 1, 2**m) * scaling
+        self.bit_sequence = np.array(gray(m))
+
+    def map(self, bits):
+        output = []
+        for seq in bits.reshape(-1, self.m):
+            output.append(
+                self.symbols[(self.bit_sequence == seq).all(axis=1).nonzero()]
+            )
+        return np.array(output)
+
+    def get_constellation(self):
+        bits = generate_all_bits(self.m)
+        symbols = self.map(bits)
+        return symbols

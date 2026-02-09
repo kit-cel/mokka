@@ -129,6 +129,9 @@ def plot_bitwise_decision_regions(
     meshgrid=False,
     additional_args=None,
     sample_radius=1.2,
+    complex=True,
+    sample_min=None,
+    sample_max=None,
 ):
     """
     Plot the bitwise decision regions of the demapper.
@@ -144,30 +147,46 @@ def plot_bitwise_decision_regions(
     :param sample_radius: either the radius or the maximum amplitude for meshgrid
 
     """
-    if meshgrid:
-        pp_axis = num_samples
-        sample_real, sample_imag = torch.meshgrid(
-            (
-                torch.linspace(-sample_radius, sample_radius, pp_axis),
-                torch.linspace(-sample_radius, sample_radius, pp_axis),
+    if sample_min is None:
+        sample_min = -sample_radius
+    if sample_max is None:
+        sample_max = sample_radius
+    if complex:
+        if meshgrid:
+            pp_axis = num_samples
+            sample_real, sample_imag = torch.meshgrid(
+                (
+                    torch.linspace(sample_min, sample_max, pp_axis),
+                    torch.linspace(sample_min, sample_max, pp_axis),
+                )
             )
-        )
-        sample_points = sample_real + 1j * sample_imag
-        sample_points = sample_points.flatten().to(next(demapper.parameters()).device)
-
-        if additional_args is not None:
-            args_expanded = tuple(
-                arg.expand(num_samples**2, 1) for arg in additional_args
+            sample_points = sample_real + 1j * sample_imag
+            sample_points = sample_points.flatten().to(
+                next(demapper.parameters()).device
             )
 
+            if additional_args is not None:
+                args_expanded = tuple(
+                    arg.expand(num_samples**2, 1) for arg in additional_args
+                )
+
+        else:
+            sample_points = (
+                sample_radius
+                * torch.rand((num_samples,))
+                * torch.exp(2j * np.pi * torch.rand((num_samples,)))
+            ).to(next(demapper.parameters()).device)
+            if additional_args is not None:
+                args_expanded = tuple(
+                    arg.expand(num_samples, 1) for arg in additional_args
+                )
     else:
-        sample_points = (
-            sample_radius
-            * torch.rand((num_samples,))
-            * torch.exp(2j * np.pi * torch.rand((num_samples,)))
-        ).to(next(demapper.parameters()).device)
-        if additional_args is not None:
-            args_expanded = tuple(arg.expand(num_samples, 1) for arg in additional_args)
+        if meshgrid:
+            sample_points = torch.linspace(sample_min, sample_max, num_samples)
+        else:
+            sample_points = torch.zeros(num_samples, dtype=torch.float32).uniform_(
+                sample_min, sample_max
+            )
 
     if additional_args is None:
         sample_demapped_bits = demapper(sample_points)
@@ -176,13 +195,18 @@ def plot_bitwise_decision_regions(
     for m in range(demapper.m.item()):
         ax = axs[m]
         axs[m].clear()
-        _ = ax.tricontourf(
-            sample_points.real.detach().cpu().numpy(),
-            sample_points.imag.detach().cpu().numpy(),
-            np.clip(sample_demapped_bits[:, m].detach().cpu().numpy(), -20, 19.9),
-            levels=np.linspace(-20, 20, 100),
-            cmap="RdBu",
-        )
+        if complex:
+            _ = ax.tricontourf(
+                sample_points.real.detach().cpu().numpy(),
+                sample_points.imag.detach().cpu().numpy(),
+                np.clip(sample_demapped_bits[:, m].detach().cpu().numpy(), -20, 19.9),
+                levels=np.linspace(-20, 20, 100),
+                cmap="RdBu",
+            )
+        else:
+            _ = ax.scatter(
+                sample_points, sample_demapped_bits[:, m].detach().cpu().numpy()
+            )
         # plt.colorbar(tcf, ax=ax)
     return sample_points, sample_demapped_bits
 
