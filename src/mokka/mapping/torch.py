@@ -358,7 +358,12 @@ class ConstellationMapper(torch.nn.Module):
         }
         m = mapper_dict["m"].item()
         mod_extra_params = mapper_dict["mod_extra_params"].tolist()
-        model = ConstellationMapper(m, mod_extra_params)
+        if "complex" in mapper_dict:
+            complex = mapper_dict["complex"].item()
+        else:
+            mapper_dict["complex"] = torch.as_tensor(True)
+            complex = True
+        model = ConstellationMapper(m, mod_extra_params, complex=complex)
         if "p_symbols" not in mapper_dict:
             mapper_dict["p_symbols"] = torch.full(
                 (2 ** mapper_dict["m"],), 1.0 / (2 ** mapper_dict["m"])
@@ -558,20 +563,38 @@ class ConstellationDemapper(torch.nn.Module):
         if self.complex:
             y = torch.view_as_real(y)
             y = torch.squeeze(y, 1)
-        # Feed received symbols into decoder network
-        if len(self.demod_extra_params):
-            # Input is y: (batchsize x symbols per snr), snr: (batchsize x 1)
-            y = torch.stack(
-                (
-                    y[:, 0],
-                    y[:, 1],
-                    torch.cat(args[self.demod_extra_params].split(1, -1), -1),
-                ),
-                -1,
-            )
-        # y = torch.atleast_2d(y)
         if y.ndim == 1:
             y = y[:, None]
+        if len(self.demod_extra_params):
+            # Input is y: (batchsize x symbols per snr), snr: (batchsize x 1)
+            demod_args = torch.stack(
+                tuple(args[idx] for idx in self.demod_extra_params),
+                dim=1,
+            ).to(y.device)
+            if demod_args.ndim == 3:
+                demod_args = demod_args.squeeze(2)
+
+            if self.complex:
+                y = torch.stack(
+                    (
+                        y[:, 0],
+                        y[:, 1],
+                        *demod_args.split(1, -1),
+                    ),
+                    -1,
+                )
+            else:
+                y = torch.stack(
+                    (
+                        y,
+                        *demod_args.split(1, -1),
+                    ),
+                    -1,
+                )
+        y = y.squeeze()
+        if y.ndim == 1:
+            y = y[:, None]
+        # Feed received symbols into decoder network
         for demap in self.demaps[:-1]:
             y = demap(y)
             y = self.ReLU(y)
@@ -606,12 +629,18 @@ class ConstellationDemapper(torch.nn.Module):
             demod_extra_params = None
         width = demapper_dict["width"].item()
         depth = demapper_dict["depth"].item()
+        if "complex" in demapper_dict:
+            complex = demapper_dict["complex"].item()
+        else:
+            demapper_dict["complex"] = torch.as_tensor(True)
+            complex = True
         model = ConstellationDemapper(
             m,
             width=width,
             depth=depth,
             with_logit=with_logit,
             demod_extra_params=demod_extra_params,
+            complex=complex,
         )
         model.load_state_dict(demapper_dict)
         return model

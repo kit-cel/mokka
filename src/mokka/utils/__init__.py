@@ -183,10 +183,19 @@ def plot_bitwise_decision_regions(
     else:
         if meshgrid:
             sample_points = torch.linspace(sample_min, sample_max, num_samples)
+            if additional_args is not None:
+                args_expanded = tuple(
+                    arg.expand(num_samples, 1) for arg in additional_args
+                )
+
         else:
             sample_points = torch.zeros(num_samples, dtype=torch.float32).uniform_(
                 sample_min, sample_max
             )
+            if additional_args is not None:
+                args_expanded = tuple(
+                    arg.expand(num_samples, 1) for arg in additional_args
+                )
 
     if additional_args is None:
         sample_demapped_bits = demapper(sample_points)
