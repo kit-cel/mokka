@@ -55,7 +55,8 @@ class CMA(torch.nn.Module):
         self.register_buffer("lr", torch.as_tensor(lr))
         self.register_buffer("block_size", torch.as_tensor(block_size))
         self.register_buffer("num_channels", torch.as_tensor(num_channels))
-        self.register_buffer("mode", torch.as_tensor(mode))
+        # self.register_buffer("mode", torch.as_tensor(mode))
+        self.mode = mode
         if butterfly_filter is not None:
             self.butterfly_filter = butterfly_filter
             self.register_buffer(
@@ -71,13 +72,17 @@ class CMA(torch.nn.Module):
             )
             self.register_buffer("filter_length", torch.as_tensor(filter_length))
         # Do some clever initalization, first only equalize x-pol and then enable y-pol
+        if no_singularity and num_channels != 2:
+            raise ValueError(
+                "Singularity avoidance techniques are only derived for 2x2 optical channels"
+            )
         self.register_buffer("no_singularity", torch.as_tensor(no_singularity))
         self.register_buffer("singularity_length", torch.as_tensor(singularity_length))
-        if (
-            self.no_singularity
-        ):  ### FIXME: taps.shape = num_channels, num_channels, num_taps
-            self.butterfly_filter.taps[2, :] = 0
-            self.butterfly_filter.taps[3, :] = 0
+        if self.no_singularity:
+            for in_ch in range(num_channels):
+                for out_ch in range(num_channels):
+                    if in_ch != out_ch:
+                        self.butterfly_filter.taps[out_ch, in_ch, :].zero_()
 
     def reset(self):
         """Reset equalizer and butterfly filters."""
@@ -88,11 +93,12 @@ class CMA(torch.nn.Module):
             timedomain=True,
             mode=self.mode,
         )
-        if (
-            self.no_singularity
-        ):  ### FIXME: taps.shape = num_channels, num_channels, num_taps
-            self.butterfly_filter.taps[2, :] = 0
-            self.butterfly_filter.taps[3, :] = 0
+        if self.no_singularity:
+
+            for in_ch in range(num_channels):
+                for out_ch in range(num_channels):
+                    if in_ch != out_ch:
+                        self.butterfly_filter.taps[out_ch, in_ch, :].zero_()
 
     def forward(self, y):
         """
@@ -119,53 +125,39 @@ class CMA(torch.nn.Module):
             dtype=torch.complex64,
         )
         # We try to put the symbol of interest in the center tap of the equalizer
-        eq_offset = (equalizer_length - 1) // 2
+        eq_offset = (equalizer_length) // 2
+        if equalizer_length % 2:
+            num_process_samples = num_samp - 1 - eq_offset
+        else:
+            num_process_samples = num_samp - 1 - eq_offset + 1
         for i, k in enumerate(
-            range(eq_offset, num_samp - 1 - eq_offset * 2, self.sps * self.block_size)
+            range(eq_offset, num_process_samples, self.sps * self.block_size)
         ):
             if i % 20000 == 0 and i != 0:
                 lr = lr / 2.0
             if i == self.singularity_length and self.no_singularity:
-                self.butterfly_filter.taps[3, :] = -1 * torch.flip(
-                    self.butterfly_filter.taps[1, :].conj().resolve_conj(), dims=(0,)
+                # We eliminate singularity in the 2x2 case
+                self.butterfly_filter.taps[1, 0, :] = -1 * torch.flip(
+                    self.butterfly_filter.taps[0, 1:].conj().resolve_conj(), dims=(0,)
                 )
-                self.butterfly_filter.taps[2, :] = torch.flip(
-                    self.butterfly_filter.taps[0, :].conj().resolve_conj(), dims=(0,)
+                self.butterfly_filter.taps[1, 1, :] = torch.flip(
+                    self.butterfly_filter.taps[0, 0, :].conj().resolve_conj(), dims=(0,)
                 )
-            in_index = torch.arange(k - equalizer_length, k)
-            out_tmp = self.butterfly_filter(y[:, in_index], "valid")
+            in_index = torch.arange(k - equalizer_length + 1, k + 1)
+            out_tmp = self.butterfly_filter(y[:, in_index])
             out[:, i] = out_tmp.squeeze()
             e[:, i] = R - torch.pow(torch.abs(out[:, i]), 2)
             update = torch.empty_like(self.butterfly_filter.taps)
-            for i in range(self.num_channels):
-                for o in range(self.num_channels):
-                    update[i, o, :] = (
-                        0  ### FIXME: taps.shape = num_channels, num_channels, num_taps
+            for ninput in range(self.num_channels):
+                for output in range(self.num_channels):
+                    update[output, ninput, :] = (
+                        e[output, i]
+                        * out[output, i]
+                        * y[ninput, in_index].conj().resolve_conj()
                     )
 
-            self.butterfly_filter.taps = self.butterfly_filter.taps + (
-                2
-                * lr
-                * torch.flip(
-                    torch.stack(
-                        (
-                            e[0, i]
-                            * out[0, i]
-                            * y[0, in_index].conj().resolve_conj(),  # hxx <- e_x x_0 x*
-                            e[0, i]
-                            * out[0, i]
-                            * y[1, in_index].conj().resolve_conj(),  # hxy <- e_x x_0 y*
-                            e[1, i]
-                            * out[1, i]
-                            * y[1, in_index].conj().resolve_conj(),  # hyy <- e_y y_0 y*
-                            e[1, i]
-                            * out[1, i]
-                            * y[0, in_index].conj().resolve_conj(),  # hyx <- e_y y_0 x*
-                        ),
-                        dim=0,
-                    ),
-                    dims=(1,),
-                )
+            self.butterfly_filter.taps = torch.nn.Parameter(
+                self.butterfly_filter.taps + 2 * lr * torch.flip(update, dims=(2,))
             )
         self.out_e = e.detach().clone()
         return out
