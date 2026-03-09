@@ -49,32 +49,27 @@ autodoc_exclude_members = [
 legacy_tox_ini = """
 [tox]
 description = list of environments against which tox runs the tests
+requires = tox>4.22, tox-uv>1
 envlist =
     flake8
     black
     pydocstyle
-    3.10
-    3.11
-    3.12
+    py3.11
+    py3.12
+    py3.13
 
-# See https://tox.readthedocs.io/en/latest/example/package.html#flit
 isolated_build = True
 isolated_build_env = build
 skip_missing_interpreters = True
-py_version =
-    3.10, flake8, black, pydocstyle: 3.10
-    3.11: 3.11
-    3.12: 3.12
-
 
 [gh-actions]
 python =
-    3.10: flake8, black, pydocstyle, py310
-    3.11: 3.11
-    3.12: 3.12
+    3.11: py3.11
+    3.12: py3.12, black, flake8, pydocstyle
+    3.13: py3.13
 
 [testenv]
-# install pytest in the virtualenv where commands will be executed
+runner = uv-venv-lock-runner
 allowlist_externals =
     uv
     bash
@@ -82,23 +77,16 @@ setenv =
     PYTHONUNBUFFERED = yes
     PIP_PREFER_BINARY = 1
 passenv = *
-extras =
-  torch
+dependency_groups =
   dev
-# This is already the default, but we include it here
-# to remind ourselves that usedevelop is incompatible with flit,
-# see https://tox.readthedocs.io/en/latest/config.html#conf-usedevelop
-usedevelop = False
-commands_pre =
-    uv venv --python {[tox]py_version}
-    uv sync --dev --all-extras --active
 commands =
-    uv run pytest {env:PYTEST_MARKERS:} {env:PYTEST_EXTRA_ARGS:} {posargs:-vv}
+  pytest {env:PYTEST_MARKERS:} {env:PYTEST_EXTRA_ARGS:} {posargs:-vv}
 
 [testenv:flake8]
 description = this environments checks for flake8 and black
+runner = uv-venv-lock-runner
 deps =
-    black==22.3.0
+    black==25.1.0
     flake8
     build
 skip_install = true
@@ -116,7 +104,7 @@ commands =
 [testenv:black]
 description = reformats the code using black
 deps =
-    black==22.3.0
+    black==25.1.0
 skip_install = true
 commands =
     black src tests
@@ -180,4 +168,5 @@ dev = [
     "sphinx-rtd-theme",
     "tox",
     "tox-gh-actions",
+    "tox-uv"
 ]
