@@ -288,9 +288,9 @@ class CMloss_NxN(torch.nn.Module):
 
         out = []
         out_q = []
-        # We start our loop already at num_taps  (because we cannot equalize the start)
-        # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
-        # We will process sps * block_size - 2 * num_taps because we will cut out
+        # We start our loop already at num_taps (cannot equalize start)
+        # We will end the loop at num_samps - num_taps - sps*block_size
+        # We will process sps * block_size - 2 * num_taps (cut first/last block)
         # the first and last block
 
         index_padding = (self.butterfly_forward.num_taps - 1) // 2
@@ -300,7 +300,7 @@ class CMloss_NxN(torch.nn.Module):
                 num_samps
                 - index_padding
                 - self.sps
-                * self.block_size,  # Back-off one block-size + filter_overlap from end to avoid overrunning
+                * self.block_size,  # Back-off one block-size + filter_overlap from end
                 self.sps * self.block_size,
             )
         ):
@@ -371,7 +371,7 @@ class CMloss_NxN(torch.nn.Module):
             # out_q.append(output_q)
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         out_const = torch.cat(out, axis=1).detach().clone()
         out_q = out_const * (
@@ -506,9 +506,9 @@ class RDloss_NxN(torch.nn.Module):
 
         out = []
         out_q = []
-        # We start our loop already at num_taps  (because we cannot equalize the start)
-        # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
-        # We will process sps * block_size - 2 * num_taps because we will cut out
+        # We start our loop already at num_taps (cannot equalize start)
+        # We will end the loop at num_samps - num_taps - sps*block_size
+        # We will process sps * block_size - 2 * num_taps (cut first/last block)
         # the first and last block
 
         index_padding = (self.butterfly_forward.num_taps - 1) // 2
@@ -518,7 +518,7 @@ class RDloss_NxN(torch.nn.Module):
                 num_samps
                 - index_padding
                 - self.sps
-                * self.block_size,  # Back-off one block-size + filter_overlap from end to avoid overrunning
+                * self.block_size,  # Back-off one block-size + filter_overlap from end
                 self.sps * self.block_size,
             )
         ):
@@ -569,7 +569,7 @@ class RDloss_NxN(torch.nn.Module):
                         y_symb[out_chan, :]
                     ).unsqueeze(0)
 
-            # We calculate the loss with less symbols, since the forward operation with "valid"
+            # Calculate loss with fewer symbols (forward with "valid" misses some)
             # is missing some symbols
             # We assume the symbol of interest is at the center tap of the filter
             in_index[
@@ -602,7 +602,7 @@ class RDloss_NxN(torch.nn.Module):
             out_q.append(output_q)
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         if self.requires_q:
             eq_out = namedtuple("eq_out", ["y", "q", "loss"])
@@ -662,7 +662,7 @@ class MSEloss_NxN(torch.nn.Module):
         self.register_buffer("N_phi_ave", torch.as_tensor(50))  # 50 at code of IPQ
         self.mode = mode
 
-        # f = scipy.io.loadmat("waveforms/data_from_IPQ/processed_data_90GBd_LO17_16qam_gray_VPPx_270mV_VPPy_210mV_scale25mV_C4CF4_10dBm_1.mat") #weights.mat")
+        # f = scipy.io.loadmat("waveforms/data_from_IPQ/...")  # weights.mat
         # weigh = f.get('wk_cma')
         # taps = torch.zeros(8,8,201, dtype=torch.complex64)
         # taps[:,:,1:] = torch.from_numpy(weigh.reshape(8,8,200)).permute(1,0,2)
@@ -690,7 +690,7 @@ class MSEloss_NxN(torch.nn.Module):
         if use_cpe:
             if cpe_window_length is None or angles_per_quadrant is None:
                 raise ValueError(
-                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                    "Please provide cpe_window_length and angles_per_quadrant for CPE."
                 )
             else:
                 # cpe_window_length = 50
@@ -734,9 +734,9 @@ class MSEloss_NxN(torch.nn.Module):
         out = []
         out_q = []
         phi_plot = []
-        # We start our loop already at num_taps  (because we cannot equalize the start)
-        # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
-        # We will process sps * block_size - 2 * num_taps because we will cut out
+        # We start our loop already at num_taps (cannot equalize start)
+        # We will end the loop at num_samps - num_taps - sps*block_size
+        # We will process sps * block_size - 2 * num_taps (cut first/last block)
         # the first and last block
 
         ref_up = torch.zeros_like(y)
@@ -749,7 +749,7 @@ class MSEloss_NxN(torch.nn.Module):
                 num_samps
                 - index_padding
                 - self.sps
-                * self.block_size,  # Back-off one block-size + filter_overlap from end to avoid overrunning
+                * self.block_size,  # Back-off one block-size + filter_overlap from end
                 self.sps * self.block_size,
             )
         ):
@@ -800,14 +800,14 @@ class MSEloss_NxN(torch.nn.Module):
                         y_symb[out_chan, :]
                     ).unsqueeze(0)
 
-            # We calculate the loss with less symbols, since the forward operation with "valid"
+            # Calculate loss with fewer symbols (forward with "valid" misses some)
             # is missing some symbols
             # We assume the symbol of interest is at the center tap of the filter
             y_index = in_index[
                 (self.butterfly_forward.num_taps - 1)
                 // 2 : -((self.butterfly_forward.num_taps - 1) // 2)
             ]
-            # ref_index = in_index[ (self.butterfly_forward.num_taps - 1) : ] + (self.butterfly_forward.num_taps + 1)*self.sps + 86
+            # ref_index = in_index[(self.butterfly_forward.num_taps-1):] + ...
             temp_ref = ref_up[:, y_index]
             ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(
                 self.num_channels, -1
@@ -835,8 +835,8 @@ class MSEloss_NxN(torch.nn.Module):
                     ref_loss.imag,
                 )
                 # for cc in range(self.num_channels):
-                #     ref[cc,:] *= torch.exp(1j*self.cpe(y_symb[cc,:])[1])    # rotate reference to make update independet of phase noise
-                # loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
+                #     ref[cc,:] *= torch.exp(1j*self.cpe(y_symb[cc,:])[1])
+                # loss = self.loss_func(y_symb.real, ref.real) + ...
                 phi_plot.append(phi_ma)
             else:
                 loss = self.loss_func(y_symb.real, ref.real) + self.loss_func(
@@ -872,7 +872,7 @@ class MSEloss_NxN(torch.nn.Module):
             out_q.append(output_q)
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         out_const = torch.cat(out, axis=1).detach().clone()
         out_const *= (
@@ -924,7 +924,7 @@ class MSEloss_NxN(torch.nn.Module):
             q_hat = torch.cat(out_q, axis=1)
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         if self.requires_q:
             eq_out = namedtuple("eq_out", ["y", "q", "loss"])  # , "phi_ref"])
@@ -1035,7 +1035,7 @@ class MSEflex_NxN(torch.nn.Module):
         if use_cpe:
             if cpe_window_length is None or angles_per_quadrant is None:
                 raise ValueError(
-                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                    "Please provide cpe_window_length and angles_per_quadrant for CPE."
                 )
             else:
                 # cpe_window_length = 50
@@ -1081,9 +1081,9 @@ class MSEflex_NxN(torch.nn.Module):
         out = []
         out_q = []
         phi_plot = []
-        # We start our loop already at num_taps  (because we cannot equalize the start)
-        # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
-        # We will process sps * block_size - 2 * num_taps because we will cut out
+        # We start our loop already at num_taps (cannot equalize start)
+        # We will end the loop at num_samps - num_taps - sps*block_size
+        # We will process sps * block_size - 2 * num_taps (cut first/last block)
         # the first and last block
 
         ref_up = torch.zeros_like(y)
@@ -1106,9 +1106,9 @@ class MSEflex_NxN(torch.nn.Module):
         y_pad = self.pad_func(y)
         ref_pad = self.pad_func(x)
         # # init ref matrix
-        # temp_eqIn[self.N_phi_ave//2,:,:] = y[:, 0 : self.sps * self.block_size + 2*index_padding]
+        # temp_eqIn[...] = y[:, 0:self.sps*self.block_size + 2*index_padding]
         # for jj in range(0,self.N_phi_ave//2):
-        #     temp_eqIn[self.N_phi_ave//2 - jj-1,:,:] = y[:, jj+1 : jj+1 + self.sps * self.block_size + 2*index_padding]  # later in time
+        #     temp_eqIn[...] = y[:, jj+1:jj+1+self.sps*self.block_size+2*index_padding]
         # temp_eqIn[self.N_phi_ave//2 + jj,:,jj:] = y[:, : -jj + self.sps *
         # self.block_size + 2*index_padding]  # earlier in time
 
@@ -1118,7 +1118,7 @@ class MSEflex_NxN(torch.nn.Module):
                 num_samps
                 - index_padding
                 - self.sps
-                * self.block_size,  # Back-off one block-size + filter_overlap from end to avoid overrunning
+                * self.block_size,  # Back-off one block-size + filter_overlap from end
                 self.sps * self.symb_per_step,
             )
         ):
@@ -1161,9 +1161,7 @@ class MSEflex_NxN(torch.nn.Module):
 
             # We downsample so we will have floor(((sps * block_size - num_taps + 1) /
             # sps) = floor(block_size - (num_taps - 1)/sps)
-            y_symb = y_hat[
-                self.N_phi_ave // 2, :, :  # 0 :: self.sps
-            ].squeeze()  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
+            y_symb = y_hat[self.N_phi_ave // 2, :, :].squeeze()  # 0 :: self.sps
 
             if self.IQ_separate:
                 num_level = self.demapper.constellation.shape[-1]
@@ -1194,7 +1192,7 @@ class MSEflex_NxN(torch.nn.Module):
                         y_symb[out_chan, :]
                     ).unsqueeze(0)
 
-            # We calculate the loss with less symbols, since the forward operation with "valid"
+            # Calculate loss with fewer symbols (forward with "valid" misses some)
             # is missing some symbols
             # We assume the symbol of interest is at the center tap of the filter
             # y_index = in_index[
@@ -1226,8 +1224,8 @@ class MSEflex_NxN(torch.nn.Module):
                     y_symb.imag, ref_loss.imag
                 )
                 # for cc in range(self.num_channels):
-                #     ref[cc,:] *= torch.exp(1j*self.cpe(y_symb[cc,:])[1])    # rotate reference to make update independet of phase noise
-                # loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
+                #     ref[cc,:] *= torch.exp(1j*self.cpe(y_symb[cc,:])[1])
+                # loss = self.loss_func(y_symb.real, ref.real) + ...
                 phi_plot.append(phi_ma)
             else:
                 loss = self.loss_func(y_symb.real, ref.real) + self.loss_func(
@@ -1265,7 +1263,7 @@ class MSEflex_NxN(torch.nn.Module):
             out_q.append(output_q)
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         ###################
 
@@ -1319,7 +1317,7 @@ class MSEflex_NxN(torch.nn.Module):
             q_hat = torch.cat(out_q, axis=1)
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         if self.requires_q:
             eq_out = namedtuple("eq_out", ["y", "q", "loss"])  # , "phi_ref"])
@@ -1442,9 +1440,9 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
         out = []
         out_q = []
         phi_plot = []
-        # We start our loop already at num_taps  (because we cannot equalize the start)
-        # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
-        # We will process sps * block_size - 2 * num_taps because we will cut out
+        # We start our loop already at num_taps (cannot equalize start)
+        # We will end the loop at num_samps - num_taps - sps*block_size
+        # We will process sps * block_size - 2 * num_taps (cut first/last block)
         # the first and last block
 
         ref_up = torch.zeros_like(y)
@@ -1472,7 +1470,7 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
                 num_samps
                 - index_padding
                 - self.sps
-                * self.block_size,  # Back-off one block-size + filter_overlap from end to avoid overrunning
+                * self.block_size,  # Back-off one block-size + filter_overlap from end
                 self.sps * self.symb_per_step,
             )
         ):
@@ -1511,9 +1509,7 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
 
             # We downsample so we will have floor(((sps * block_size - num_taps + 1) /
             # sps) = floor(block_size - (num_taps - 1)/sps)
-            y_symb = y_hat[
-                self.N_phi_ave // 2, :, :  # 0 :: self.sps
-            ].squeeze()  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
+            y_symb = y_hat[self.N_phi_ave // 2, :, :].squeeze()  # 0 :: self.sps
 
             if self.IQ_separate:
                 num_level = self.demapper.constellation.shape[-1]
@@ -1591,7 +1587,7 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
             out_q.append(output_q)
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         ###################
 
@@ -1645,7 +1641,7 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
             q_hat = torch.cat(out_q, axis=1)
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         if self.requires_q:
             eq_out = namedtuple("eq_out", ["y", "q", "loss"])  # , "phi_ref"])
@@ -1729,7 +1725,7 @@ class LMS_NxN(torch.nn.Module):
         if use_cpe:
             if cpe_window_length is None or angles_per_quadrant is None:
                 raise ValueError(
-                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                    "Please provide cpe_window_length and angles_per_quadrant for CPE."
                 )
             else:
                 # cpe_window_length = 50
@@ -1768,9 +1764,9 @@ class LMS_NxN(torch.nn.Module):
         num_samps = y.shape[1]
         # samples_per_step = self.butterfly_forward.num_taps + self.block_size
 
-        # We start our loop already at num_taps  (because we cannot equalize the start)
-        # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
-        # We will process sps * block_size - 2 * num_taps because we will cut out
+        # We start our loop already at num_taps (cannot equalize start)
+        # We will end the loop at num_samps - num_taps - sps*block_size
+        # We will process sps * block_size - 2 * num_taps (cut first/last block)
         # the first and last block
 
         self.symb_per_step % 2
@@ -1798,9 +1794,9 @@ class LMS_NxN(torch.nn.Module):
         y_pad = self.pad_func(y)
         ref_pad = self.pad_func(x)
         # # init ref matrix
-        # temp_eqIn[self.N_phi_ave//2,:,:] = y[:, 0 : self.sps * self.block_size + 2*index_padding]
+        # temp_eqIn[...] = y[:, 0:self.sps*self.block_size + 2*index_padding]
         # for jj in range(0,self.N_phi_ave//2):
-        #     temp_eqIn[self.N_phi_ave//2 - jj-1,:,:] = y[:, jj+1 : jj+1 + self.sps * self.block_size + 2*index_padding]  # later in time
+        #     temp_eqIn[...] = y[:, jj+1:jj+1+self.sps*self.block_size+2*index_padding]
         # temp_eqIn[self.N_phi_ave//2 + jj,:,jj:] = y[:, : -jj + self.sps *
         # self.block_size + 2*index_padding]  # earlier in time
 
@@ -1808,7 +1804,7 @@ class LMS_NxN(torch.nn.Module):
             range(
                 index_padding,
                 num_samps - index_padding - self.butterfly_forward.num_taps,
-                # Back-off one block-size + filter_overlap from end to avoid overrunning
+                # Back-off one block-size + filter_overlap from end
                 self.sps,
             )
         ):
@@ -1837,7 +1833,7 @@ class LMS_NxN(torch.nn.Module):
                 temp_eqIn[self.N_phi_ave // 2 + jj, :, :] = y_pad[
                     :, in_index - self.sps * jj
                 ]  # earlier in time
-                # temp_ref[self.N_phi_ave//2 - jj-1,:,:] = ref_pad[:, jj+1+ref_index]  # later in time
+                # temp_ref[...] = ref_pad[:, jj+1+ref_index]  # later in time
                 # temp_ref[self.N_phi_ave//2 + jj,:, :] = ref_pad[:, ref_index - jj] #
                 # earlier in time
 
@@ -1847,9 +1843,7 @@ class LMS_NxN(torch.nn.Module):
 
             # We downsample so we will have floor(((sps * block_size - num_taps + 1) /
             # sps) = floor(block_size - (num_taps - 1)/sps)
-            y_symb = y_hat[
-                self.N_phi_ave // 2, :  # 0 :: self.sps
-            ].squeeze()  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
+            y_symb = y_hat[self.N_phi_ave // 2, :].squeeze()  # 0 :: self.sps
             ref = temp_ref[self.N_phi_ave // 2, :].squeeze()
 
             with torch.set_grad_enabled(False):
@@ -1922,7 +1916,7 @@ class LMS_NxN(torch.nn.Module):
                 )
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         if self.requires_q:
             eq_out = namedtuple("eq_out", ["y", "q", "loss"])  # , "phi_ref"])
@@ -1939,7 +1933,7 @@ class LMS_NxN(torch.nn.Module):
 ##########################################################################
 
 ##########################################################################
-########################### Variational Autoencoer based Equalizer #######
+## Variational Autoencoer based Equalizer ###############################
 ##########################################################################
 
 
@@ -2176,9 +2170,9 @@ def ELBO_NxN(
 
 def ELBO_DP_IQ(y, q, sps, amp_levels, h_est, p_amps=None):
     """
-    Calculate dual-pol. ELBO loss for I/Q-symmetric constellations by splitting the calculation in two real-valued paths for I/Q separately.
+    Calculate dual-pol ELBO loss for I/Q-symmetric constellations.
 
-    Instead of calculation in the complex domain, it is split in two real-valued vectors for separate calculation of I/Q.
+    Split into two real-valued vectors for I/Q calculation.
     This implements the dual-polarization case.
     """
     # Input is a sequence y of length N
@@ -2384,14 +2378,14 @@ class VAE_LE_DP(torch.nn.Module):
 
         out = []
         out_q = []
-        # We start our loop already at num_taps  (because we cannot equalize the start)
+        # We start our loop already at num_taps (cannot equalize start)
         # We will end the loop at num_samps - num_taps - sps*block_size
         # (safety, so we don't overrun)
-        # We will process sps * block_size - 2 * num_taps because we will cut out
+        # We will process sps * block_size - 2 * num_taps (cut first/last block)
         # the first and last block
 
         index_padding = (self.butterfly_forward.num_taps - 1) // 2
-        # Back-off one block-size + filter_overlap from end to avoid overrunning
+        # Back-off one block-size + filter_overlap from end
         for i, k in enumerate(
             range(
                 index_padding,
@@ -2493,7 +2487,7 @@ class VAE_LE_DP(torch.nn.Module):
             out_q.append(output_q)
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         if self.requires_q:
             eq_out = namedtuple("eq_out", ["y", "q", "var", "loss"])
@@ -2515,7 +2509,7 @@ class VAE_LE_DP(torch.nn.Module):
 class VAE_LE_DP_IQ(torch.nn.Module):
     """
     Class that can be dropped in to perform equalization as in:
-    V. Lauinger, F. Buchali and L. Schmalen, "Blind equalization and channel estimation in coherent optical communications using variational autoencoders," IEEE J. Sel. Areas Commun., vol. 40, no. 9, pp. 2529-2539, Sep. 2022.
+    V. Lauinger, F. Buchali and L. Schmalen, "Blind equalization and channel estimation in coherent optical communications using variational autoencoders," IEEE JSAC, vol. 40, no. 9, pp. 2529-2539, Sep. 2022.
     """
 
     def __init__(
@@ -2592,9 +2586,9 @@ class VAE_LE_DP_IQ(torch.nn.Module):
 
         out = []
         out_q = []
-        # We start our loop already at num_taps  (because we cannot equalize the start)
-        # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
-        # We will process sps * block_size - 2 * num_taps because we will cut out
+        # We start our loop already at num_taps (cannot equalize start)
+        # We will end the loop at num_samps - num_taps - sps*block_size
+        # We will process sps * block_size - 2 * num_taps (cut first/last block)
         # the first and last block
 
         index_padding = (self.butterfly_forward.num_taps - 1) // 2
@@ -2604,7 +2598,7 @@ class VAE_LE_DP_IQ(torch.nn.Module):
                 num_samps
                 - index_padding
                 - self.sps
-                * self.block_size,  # Back-off one block-size + filter_overlap from end to avoid overrunning
+                * self.block_size,  # Back-off one block-size + filter_overlap from end
                 self.sps * self.block_size,
             )
         ):
@@ -2646,7 +2640,7 @@ class VAE_LE_DP_IQ(torch.nn.Module):
                 axis=0,
             )
 
-            # We calculate the loss with less symbols, since the forward operation with "valid"
+            # Calculate loss with fewer symbols (forward with "valid" misses some)
             # is missing some symbols
             # We assume the symbol of interest is at the center tap of the filter
             y_index = in_index[
@@ -2880,7 +2874,7 @@ class VAE_LE_NxN(torch.nn.Module):
         if use_cpe:
             if cpe_window_length is None or angles_per_quadrant is None:
                 raise ValueError(
-                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                    "Please provide cpe_window_length and angles_per_quadrant for CPE."
                 )
             else:
                 # cpe_window_length = 50
@@ -2900,7 +2894,7 @@ class VAE_LE_NxN(torch.nn.Module):
         if use_cpe_in_training:
             if cpe_window_length is None or angles_per_quadrant is None:
                 raise ValueError(
-                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                    "Please provide cpe_window_length and angles_per_quadrant for CPE."
                 )
             else:
                 self.cpe_in_loop = BPS(
@@ -2976,9 +2970,9 @@ class VAE_LE_NxN(torch.nn.Module):
         out = []
         out_q = []
         var_out = []
-        # We start our loop already at num_taps  (because we cannot equalize the start)
-        # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
-        # We will process sps * block_size - 2 * num_taps because we will cut out the first and last block
+        # We start our loop already at num_taps (cannot equalize start)
+        # We will end the loop at num_samps - num_taps - sps*block_size
+        # We will process sps * block_size - 2 * num_taps (cut first/last block) the first and last block
         ##########################
         # ref_up = torch.zeros_like(y)
         # ref_up[:,::self.sps] = x[:,:y.shape[-1]//self.sps]
@@ -2994,7 +2988,7 @@ class VAE_LE_NxN(torch.nn.Module):
                 num_samps
                 - index_padding
                 - self.sps
-                * self.block_size,  # Back-off one block-size + filter_overlap from end to avoid overrunning
+                * self.block_size,  # Back-off one block-size + filter_overlap from end
                 self.sps * self.block_size,
             )
         ):
@@ -3021,7 +3015,7 @@ class VAE_LE_NxN(torch.nn.Module):
             ]  # y_symb_temp #
             phi_loop = torch.zeros_like(y_symb).real  # .to(torch.float32)
 
-            # We calculate the loss with less symbols, since the forward operation with "valid"
+            # Calculate loss with fewer symbols (forward with "valid" misses some)
             # is missing some symbols
             # We assume the symbol of interest is at the center tap of the filter
             y_index = in_index[index_padding:-index_padding]
@@ -3248,7 +3242,7 @@ class VAE_LE_NxN(torch.nn.Module):
             q_hat = torch.cat(out_q, axis=1)
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         if self.requires_q:
             eq_out = namedtuple("eq_out", ["y", "q", "var", "loss"])
@@ -3405,7 +3399,7 @@ class VAE_LE_NxN_orig(torch.nn.Module):
         if use_cpe:
             if cpe_window_length is None or angles_per_quadrant is None:
                 raise ValueError(
-                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                    "Please provide cpe_window_length and angles_per_quadrant for CPE."
                 )
             else:
                 # cpe_window_length = 50
@@ -3425,7 +3419,7 @@ class VAE_LE_NxN_orig(torch.nn.Module):
         if use_cpe_in_training:
             if cpe_window_length is None or angles_per_quadrant is None:
                 raise ValueError(
-                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                    "Please provide cpe_window_length and angles_per_quadrant for CPE."
                 )
             else:
                 self.cpe_in_loop = BPS(
@@ -3499,9 +3493,9 @@ class VAE_LE_NxN_orig(torch.nn.Module):
         out = []
         out_q = []
         var_out = []
-        # We start our loop already at num_taps  (because we cannot equalize the start)
-        # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
-        # We will process sps * block_size - 2 * num_taps because we will cut out the first and last block
+        # We start our loop already at num_taps (cannot equalize start)
+        # We will end the loop at num_samps - num_taps - sps*block_size
+        # We will process sps * block_size - 2 * num_taps (cut first/last block) the first and last block
         ##########################
         ref_up = torch.zeros_like(y)
         ref_up[:, :: self.sps] = x[:, : y.shape[-1] // self.sps]
@@ -3515,7 +3509,7 @@ class VAE_LE_NxN_orig(torch.nn.Module):
                 num_samps
                 - index_padding
                 - self.sps
-                * self.block_size,  # Back-off one block-size + filter_overlap from end to avoid overrunning
+                * self.block_size,  # Back-off one block-size + filter_overlap from end
                 self.sps * self.block_size,
             )
         ):
@@ -3540,7 +3534,7 @@ class VAE_LE_NxN_orig(torch.nn.Module):
             y_symb = torch.empty_like(y_symb_temp)  # y_symb_temp #
             phi_loop = torch.zeros_like(y_symb_temp).real  # .to(torch.float32)
 
-            # We calculate the loss with less symbols, since the forward operation with "valid"
+            # Calculate loss with fewer symbols (forward with "valid" misses some)
             # is missing some symbols
             # We assume the symbol of interest is at the center tap of the filter
             y_index = in_index[
@@ -3749,7 +3743,7 @@ class VAE_LE_NxN_orig(torch.nn.Module):
             q_hat = torch.cat(out_q, axis=1)
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         if self.requires_q:
             eq_out = namedtuple("eq_out", ["y", "q", "var", "loss"])
@@ -3917,7 +3911,7 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         if use_cpe:
             if cpe_window_length is None or angles_per_quadrant is None:
                 raise ValueError(
-                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                    "Please provide cpe_window_length and angles_per_quadrant for CPE."
                 )
             else:
                 # cpe_window_length = 50
@@ -3934,7 +3928,7 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         if use_cpe_in_training:
             if cpe_window_length is None or angles_per_quadrant is None:
                 raise ValueError(
-                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                    "Please provide cpe_window_length and angles_per_quadrant for CPE."
                 )
             else:
                 self.cpe_in_loop = BPS(
@@ -3992,9 +3986,9 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         out = []
         out_q = []
         var_out = []
-        # We start our loop already at num_taps  (because we cannot equalize the start)
-        # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
-        # We will process sps * block_size - 2 * num_taps because we will cut out
+        # We start our loop already at num_taps (cannot equalize start)
+        # We will end the loop at num_samps - num_taps - sps*block_size
+        # We will process sps * block_size - 2 * num_taps (cut first/last block)
         # the first and last block
 
         # ref_up = torch.zeros_like(y)
@@ -4015,9 +4009,9 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         y_pad = self.pad_func(y)
         # ref_pad = self.pad_func(x)
         # # init ref matrix
-        # temp_eqIn[self.N_phi_ave//2,:,:] = y[:, 0 : self.sps * self.block_size + 2*index_padding]
+        # temp_eqIn[...] = y[:, 0:self.sps*self.block_size + 2*index_padding]
         # for jj in range(0,self.N_phi_ave//2):
-        #     temp_eqIn[self.N_phi_ave//2 - jj-1,:,:] = y[:, jj+1 : jj+1 + self.sps * self.block_size + 2*index_padding]  # later in time
+        #     temp_eqIn[...] = y[:, jj+1:jj+1+self.sps*self.block_size+2*index_padding]
         # temp_eqIn[self.N_phi_ave//2 + jj,:,jj:] = y[:, : -jj + self.sps *
         # self.block_size + 2*index_padding]  # earlier in time
 
@@ -4027,7 +4021,7 @@ class VAE_LE_flex_NxN(torch.nn.Module):
                 num_samps
                 - index_padding
                 - self.sps
-                * self.block_size,  # Back-off one block-size + filter_overlap from end to avoid overrunning
+                * self.block_size,  # Back-off one block-size + filter_overlap from end
                 self.sps * self.symb_per_step,
             )
         ):
@@ -4049,18 +4043,18 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             # for jj in range(0,self.N_phi_ave//2):
             #     temp_eqIn[self.N_phi_ave//2 - jj-1,:,:] = y_pad[:, self.sps*jj+1+in_index]  # later in time
             #     temp_eqIn[self.N_phi_ave//2 + jj,:,:] = y_pad[:, in_index - self.sps*jj]  # earlier in time
-            #     #temp_ref[self.N_phi_ave//2 - jj-1,:,:] = ref_pad[:, jj+1+ref_index]  # later in time
-            #     #temp_ref[self.N_phi_ave//2 + jj,:, :] = ref_pad[:, ref_index - jj] # earlier in time
+            #     #temp_ref[...] = ref_pad[:, jj+1+ref_index]  # later in time
+            #     #temp_ref[...] = ref_pad[:, ref_index - jj]
 
             # Equalization will give sps * block_size samples (because we add
             # (num_taps - 1) in the beginning)
             y_hat = self.butterfly_forward(y_pad[:, in_index])
             # y_hat = self.butterfly_forward(temp_eqIn)[ : , : , 0 :: self.sps ]
 
-            # We downsample so we will have floor(((sps * block_size - num_taps + 1) / sps) = floor(block_size - (num_taps - 1)/sps)
+            # Downsample: floor(((sps*block_size-num_taps+1)/sps) = floor(block_size-(num_taps-1)/sps)
             # y_symb_temp = y_hat[
             #     self.N_phi_ave//2, :, :  #0 :: self.sps
-            # ].squeeze()  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
+            # ].squeeze()
             # y_symb = torch.empty_like(y_symb_temp)
             y_symb_temp = y_hat[
                 :, 0 :: self.sps
@@ -4106,7 +4100,7 @@ class VAE_LE_flex_NxN(torch.nn.Module):
                         y_symb[out_chan, :]
                     ).unsqueeze(0)
 
-            # We calculate the loss with less symbols, since the forward operation with "valid"
+            # Calculate loss with fewer symbols (forward with "valid" misses some)
             # is missing some symbols
             # We assume the symbol of interest is at the center tap of the filter
             y_index = in_index[index_padding:-index_padding]
@@ -4183,11 +4177,11 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             #     ref_loss = ref *torch.exp(1j*phi_ma)
             #     loss = self.loss_func( y_symb.real, ref_loss.real ) + self.loss_func( y_symb.imag, ref_loss.imag)
             #     # for cc in range(self.num_channels):
-            #     #     ref[cc,:] *= torch.exp(1j*self.cpe(y_symb[cc,:])[1])    # rotate reference to make update independet of phase noise
-            #     # loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
+            #     #     ref[cc,:] *= torch.exp(1j*self.cpe(y_symb[cc,:])[1])
+            # loss = self.loss_func(y_symb.real, ref.real) + ...
             #     phi_plot.append(phi_ma)
             # else:
-            #     loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
+            #     loss = self.loss_func(y_symb.real, ref.real) + ...
 
             # # print("noise_sigma: ", self.demapper.noise_sigma)
             # loss.backward()
@@ -4221,7 +4215,7 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             out_q.append(output_q)
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         ###################
         var_hat = (
@@ -4278,7 +4272,7 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             q_hat = torch.cat(out_q, axis=1)
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         if self.requires_q:
             eq_out = namedtuple("eq_out", ["y", "q", "var", "loss"])
@@ -4445,7 +4439,7 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         if use_cpe:
             if cpe_window_length is None or angles_per_quadrant is None:
                 raise ValueError(
-                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                    "Please provide cpe_window_length and angles_per_quadrant for CPE."
                 )
             else:
                 # cpe_window_length = 50
@@ -4462,7 +4456,7 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         if use_cpe_in_training:
             if cpe_window_length is None or angles_per_quadrant is None:
                 raise ValueError(
-                    "Please provide cpe_window_length and angles_per_quadrant when using CPE."
+                    "Please provide cpe_window_length and angles_per_quadrant for CPE."
                 )
             else:
                 self.cpe_in_loop = BPS(
@@ -4519,9 +4513,9 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         out = []
         out_q = []
         var_out = []
-        # We start our loop already at num_taps  (because we cannot equalize the start)
-        # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
-        # We will process sps * block_size - 2 * num_taps because we will cut out
+        # We start our loop already at num_taps (cannot equalize start)
+        # We will end the loop at num_samps - num_taps - sps*block_size
+        # We will process sps * block_size - 2 * num_taps (cut first/last block)
         # the first and last block
 
         # ref_up = torch.zeros_like(y)
@@ -4544,9 +4538,9 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         y_pad = y  # self.pad_func(y)
         # ref_pad = self.pad_func(x)
         # # init ref matrix
-        # temp_eqIn[self.N_phi_ave//2,:,:] = y[:, 0 : self.sps * self.block_size + 2*index_padding]
+        # temp_eqIn[...] = y[:, 0:self.sps*self.block_size + 2*index_padding]
         # for jj in range(0,self.N_phi_ave//2):
-        #     temp_eqIn[self.N_phi_ave//2 - jj-1,:,:] = y[:, jj+1 : jj+1 + self.sps * self.block_size + 2*index_padding]  # later in time
+        #     temp_eqIn[...] = y[:, jj+1:jj+1+self.sps*self.block_size+2*index_padding]
         # temp_eqIn[self.N_phi_ave//2 + jj,:,jj:] = y[:, : -jj + self.sps *
         # self.block_size + 2*index_padding]  # earlier in time
 
@@ -4556,7 +4550,7 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
                 num_samps
                 - index_padding
                 - self.sps
-                * self.block_size,  # Back-off one block-size + filter_overlap from end to avoid overrunning
+                * self.block_size,  # Back-off one block-size + filter_overlap from end
                 self.sps * self.symb_per_step,
             )
         ):
@@ -4578,18 +4572,18 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             # for jj in range(0,self.N_phi_ave//2):
             #     temp_eqIn[self.N_phi_ave//2 - jj-1,:,:] = y_pad[:, self.sps*jj+1+in_index]  # later in time
             #     temp_eqIn[self.N_phi_ave//2 + jj,:,:] = y_pad[:, in_index - self.sps*jj]  # earlier in time
-            #     #temp_ref[self.N_phi_ave//2 - jj-1,:,:] = ref_pad[:, jj+1+ref_index]  # later in time
-            #     #temp_ref[self.N_phi_ave//2 + jj,:, :] = ref_pad[:, ref_index - jj] # earlier in time
+            #     #temp_ref[...] = ref_pad[:, jj+1+ref_index]  # later in time
+            #     #temp_ref[...] = ref_pad[:, ref_index - jj]
 
             # Equalization will give sps * block_size samples (because we add
             # (num_taps - 1) in the beginning)
             y_hat = self.butterfly_forward(y_pad[:, in_index])
             # y_hat = self.butterfly_forward(temp_eqIn)[ : , : , 0 :: self.sps ]
 
-            # We downsample so we will have floor(((sps * block_size - num_taps + 1) / sps) = floor(block_size - (num_taps - 1)/sps)
+            # Downsample: floor(((sps*block_size-num_taps+1)/sps) = floor(block_size-(num_taps-1)/sps)
             # y_symb_temp = y_hat[
             #     self.N_phi_ave//2, :, :  #0 :: self.sps
-            # ].squeeze()  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
+            # ].squeeze()
             # y_symb = torch.empty_like(y_symb_temp)
             y_symb_temp = y_hat[
                 :, 0 :: self.sps
@@ -4638,7 +4632,7 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
                         y_symb[out_chan, :]
                     ).unsqueeze(0)
 
-            # We calculate the loss with less symbols, since the forward operation with "valid"
+            # Calculate loss with fewer symbols (forward with "valid" misses some)
             # is missing some symbols
             # We assume the symbol of interest is at the center tap of the filter
             y_index = in_index[index_padding:-index_padding]
@@ -4715,11 +4709,11 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             #     ref_loss = ref *torch.exp(1j*phi_ma)
             #     loss = self.loss_func( y_symb.real, ref_loss.real ) + self.loss_func( y_symb.imag, ref_loss.imag)
             #     # for cc in range(self.num_channels):
-            #     #     ref[cc,:] *= torch.exp(1j*self.cpe(y_symb[cc,:])[1])    # rotate reference to make update independet of phase noise
-            #     # loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
+            #     #     ref[cc,:] *= torch.exp(1j*self.cpe(y_symb[cc,:])[1])
+            # loss = self.loss_func(y_symb.real, ref.real) + ...
             #     phi_plot.append(phi_ma)
             # else:
-            #     loss = self.loss_func( y_symb.real, ref.real ) + self.loss_func( y_symb.imag, ref.imag)
+            #     loss = self.loss_func(y_symb.real, ref.real) + ...
 
             # # print("noise_sigma: ", self.demapper.noise_sigma)
             # loss.backward()
@@ -4753,7 +4747,7 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             out_q.append(output_q)
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         ###################
 
@@ -4811,7 +4805,7 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             q_hat = torch.cat(out_q, axis=1)
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         if self.requires_q:
             eq_out = namedtuple("eq_out", ["y", "q", "var", "loss"])
@@ -5020,9 +5014,9 @@ class VQVAE_LE_DP(torch.nn.Module):
 
         out = []
         out_q = []
-        # We start our loop already at num_taps  (because we cannot equalize the start)
-        # We will end the loop at num_samps - num_taps - sps*block_size (safety, so we don't overrun)
-        # We will process sps * block_size - 2 * num_taps because we will cut out
+        # We start our loop already at num_taps (cannot equalize start)
+        # We will end the loop at num_samps - num_taps - sps*block_size
+        # We will process sps * block_size - 2 * num_taps (cut first/last block)
         # the first and last block
 
         index_padding = (self.butterfly_forward.num_taps - 1) // 2
@@ -5032,7 +5026,7 @@ class VQVAE_LE_DP(torch.nn.Module):
                 num_samps
                 - index_padding
                 - self.sps
-                * self.block_size,  # Back-off one block-size + filter_overlap from end to avoid overrunning
+                * self.block_size,  # Back-off one block-size + filter_overlap from end
                 self.sps * self.block_size,
             )
         ):
@@ -5081,7 +5075,7 @@ class VQVAE_LE_DP(torch.nn.Module):
                         self.demapper(y_symb[1, :]).unsqueeze(0),
                     )
                 )
-            # We calculate the loss with less symbols, since the forward operation with "valid"
+            # Calculate loss with fewer symbols (forward with "valid" misses some)
             # is missing some symbols
             # We assume the symbol of interest is at the center tap of the filter
             y_index = in_index[
@@ -5122,7 +5116,7 @@ class VQVAE_LE_DP(torch.nn.Module):
             out_q.append(output_q)
 
         # print("loss: ", loss, "\t\t\t var: ", var)
-        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2 :])
+        # out.append(y_symb[:, self.block_size - self.butterfly_forward.num_taps // 2:])
 
         if self.requires_q:
             eq_out = namedtuple("eq_out", ["y", "q", "loss"])
