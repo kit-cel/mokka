@@ -54,7 +54,6 @@ class CMA(torch.nn.Module):
         self.register_buffer("lr", torch.as_tensor(lr))
         self.register_buffer("block_size", torch.as_tensor(block_size))
         self.register_buffer("num_channels", torch.as_tensor(num_channels))
-        # self.register_buffer("mode", torch.as_tensor(mode))
         self.mode = mode
         if butterfly_filter is not None:
             self.butterfly_filter = butterfly_filter
@@ -70,7 +69,6 @@ class CMA(torch.nn.Module):
                 mode=mode,
             )
             self.register_buffer("filter_length", torch.as_tensor(filter_length))
-        # Do some clever initalization, first only equalize x-pol and then enable y-pol
         if no_singularity and num_channels != 2:
             raise ValueError(
                 "Singularity avoidance techniques are only"
@@ -115,7 +113,6 @@ class CMA(torch.nn.Module):
         e = torch.zeros(
             (2, (num_samp - equalizer_length) // self.sps), dtype=torch.float32
         )
-        # logger.debug("CMA loop num: %s", reset_number)
         R = self.R  # 1.0
         lr = self.lr  # 1e-3
         out = torch.zeros(
@@ -171,9 +168,7 @@ class CMA(torch.nn.Module):
 
 
 class CMloss_NxN(torch.nn.Module):
-    """
-    Class that can be dropped in to perform equalization
-    """
+    """Class that can be dropped in to perform equalization."""
 
     def __init__(
         self,
@@ -193,6 +188,24 @@ class CMloss_NxN(torch.nn.Module):
         IQ_separate=False,
         mode="valid",
     ):
+        """Construct CMloss_NxN.
+
+        :param num_channels: Number of channels
+        :param taps: Taps for the equalizer
+        :param num_taps: Number of taps
+        :param demapper: Demapper
+        :param sps: Samples per symbol
+        :param block_size: Block size
+        :param cpe_window_length: CPE window length
+        :param angles_per_quadrant: Angles per quadrant
+        :param lr: Learning rate
+        :param requires_q: Requires q
+        :param use_corr_avoid: Use correlation avoidance
+        :param alpha_corr: Alpha for correlation avoidance
+        :param corr_window: Correlation window
+        :param IQ_separate: IQ separate
+        :param mode: Mode
+        """
         super(CMloss_NxN, self).__init__()
 
         self.register_buffer("block_size", torch.as_tensor(block_size))
@@ -246,7 +259,6 @@ class CMloss_NxN(torch.nn.Module):
             lr=self.start_lr,  # 0.5e-2,
         )
 
-        # self.optimizer_var = torch.optim.Adam(
         #     [self.demapper.noise_sigma],
         #     lr=0.5,  # 0.5e-2,
         # )
@@ -280,11 +292,9 @@ class CMloss_NxN(torch.nn.Module):
         )
 
     def forward(self, y):
-        # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
         num_samps = y.shape[1]
-        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
 
         out = []
         out_q = []
@@ -307,7 +317,6 @@ class CMloss_NxN(torch.nn.Module):
             # if i % (20000//self.block_size) == 0 and i != 0:
             # print("Updating learning rate")
             # self.update_lr(self.lr * 0.5)
-            # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
                 k - index_padding,
                 k + self.sps * self.block_size + index_padding,
@@ -362,7 +371,6 @@ class CMloss_NxN(torch.nn.Module):
             output_symbols = y_symb[
                 :, : self.block_size
             ]  # - self.butterfly_forward.num_taps // 2]
-            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
             out.append(
                 output_symbols
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
@@ -498,11 +506,9 @@ class RDloss_NxN(torch.nn.Module):
         )
 
     def forward(self, y):
-        # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
         num_samps = y.shape[1]
-        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
 
         out = []
         out_q = []
@@ -525,7 +531,6 @@ class RDloss_NxN(torch.nn.Module):
             # if i % (20000//self.block_size) == 0 and i != 0:
             # print("Updating learning rate")
             # self.update_lr(self.lr * 0.5)
-            # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
                 k - index_padding,
                 k + self.sps * self.block_size + index_padding,
@@ -593,7 +598,6 @@ class RDloss_NxN(torch.nn.Module):
             output_symbols = y_symb[
                 :, : self.block_size
             ]  # - self.butterfly_forward.num_taps // 2]
-            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
             out.append(
                 output_symbols
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
@@ -723,11 +727,9 @@ class MSEloss_NxN(torch.nn.Module):
         )
 
     def forward(self, y, x):
-        # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
         num_samps = y.shape[1]
-        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
 
         ref_out = []
 
@@ -756,7 +758,6 @@ class MSEloss_NxN(torch.nn.Module):
             # if i % (20000//self.block_size) == 0 and i != 0:
             # print("Updating learning rate")
             # self.update_lr(self.lr * 0.5)
-            # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
                 k - index_padding,
                 k + self.sps * self.block_size + index_padding,
@@ -853,7 +854,6 @@ class MSEloss_NxN(torch.nn.Module):
             output_symbols = y_symb[
                 :, : self.block_size
             ]  # - self.butterfly_forward.num_taps // 2]
-            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
             out.append(
                 output_symbols
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
@@ -862,7 +862,6 @@ class MSEloss_NxN(torch.nn.Module):
             ref_tmp = ref[
                 :, : self.block_size
             ]  # - self.butterfly_forward.num_taps // 2]
-            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
             ref_out.append(
                 ref_tmp
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
@@ -1068,7 +1067,6 @@ class MSEflex_NxN(torch.nn.Module):
         )
 
     def forward(self, y, x):
-        # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
         assert (
@@ -1076,7 +1074,6 @@ class MSEflex_NxN(torch.nn.Module):
         )  # TODO: implement for both cases
 
         num_samps = y.shape[1]
-        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
 
         out = []
         out_q = []
@@ -1125,7 +1122,6 @@ class MSEflex_NxN(torch.nn.Module):
             # if i % (20000//self.block_size) == 0 and i != 0:
             # print("Updating learning rate")
             # self.update_lr(self.lr * 0.5)
-            # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
                 k,  # - index_padding,   # padding alincluded in y_pad
                 k
@@ -1207,7 +1203,8 @@ class MSEflex_NxN(torch.nn.Module):
             #     self.num_channels,-1)
             #     temp_ref.nonzero(as_tuple=True)].reshape(
             #     self.num_channels,-1)
-            # temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)
+            # temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(
+            #     self.num_channels,-1)
             # # .nonzero() downsamples to 1sps again
             ref = temp_ref[self.N_phi_ave // 2, :, :]
 
@@ -1257,7 +1254,6 @@ class MSEflex_NxN(torch.nn.Module):
             output_symbols = y_symb[
                 :, ind_out
             ]  # - self.butterfly_forward.num_taps // 2]
-            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
             out.append(
                 output_symbols
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
@@ -1430,7 +1426,6 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
         )
 
     def forward(self, y, x):
-        # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
         assert (
@@ -1438,7 +1433,6 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
         )  # TODO: implement for both cases
 
         num_samps = y.shape[1]
-        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
 
         out = []
         out_q = []
@@ -1580,7 +1574,6 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
             output_symbols = y_symb[
                 :, ind_out
             ]  # - self.butterfly_forward.num_taps // 2]
-            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
             out.append(
                 output_symbols
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
@@ -1756,7 +1749,6 @@ class LMS_NxN(torch.nn.Module):
         ).to(device=self.butterfly_forward.taps.device)
 
     def forward(self, y, x):
-        # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
         assert (
@@ -1764,7 +1756,6 @@ class LMS_NxN(torch.nn.Module):
         )  # TODO: implement for both cases
 
         num_samps = y.shape[1]
-        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
 
         # We start our loop already at num_taps (cannot equalize start)
         # We will end the loop at num_samps - num_taps - sps*block_size
@@ -1813,7 +1804,6 @@ class LMS_NxN(torch.nn.Module):
             # if i % (20000//self.block_size) == 0 and i != 0:
             # print("Updating learning rate")
             # self.update_lr(self.lr * 0.5)
-            # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
                 k,  # - index_padding,   # padding alincluded in y_pad
                 k + self.butterfly_forward.num_taps,  # padding doubles
@@ -2371,11 +2361,9 @@ class VAE_LE_DP(torch.nn.Module):
 
         :param y: Complex input signal
         """
-        # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
         num_samps = y.shape[1]
-        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
 
         out = []
         out_q = []
@@ -2397,7 +2385,6 @@ class VAE_LE_DP(torch.nn.Module):
             # if i % (20000//self.block_size) == 0 and i != 0:
             # print("Updating learning rate")
             # self.update_lr(self.lr * 0.5)
-            # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
                 k - index_padding,
                 k + self.sps * self.block_size + index_padding,
@@ -2457,7 +2444,6 @@ class VAE_LE_DP(torch.nn.Module):
                 p_constellation=self.demapper.p_symbols,
                 IQ_separate=self.IQ_separate,
             )
-            # logger.info("Iteration: %s/%s, VAE loss: %s", i+1,
             # ((num_samps - index_padding - self.sps * self.block_size)
             # // (self.sps * self.block_size)).item(), loss.item())
 
@@ -2479,7 +2465,6 @@ class VAE_LE_DP(torch.nn.Module):
             output_symbols = y_symb[
                 :, : self.block_size
             ]  # - self.butterfly_forward.num_taps // 2]
-            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
             out.append(
                 output_symbols
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
@@ -2510,7 +2495,10 @@ class VAE_LE_DP(torch.nn.Module):
 class VAE_LE_DP_IQ(torch.nn.Module):
     """
     Class that can be dropped in to perform equalization as in:
-    V. Lauinger, F. Buchali and L. Schmalen, "Blind equalization and channel estimation in coherent optical communications using variational autoencoders,"
+
+    V. Lauinger, F. Buchali and L. Schmalen,
+    "Blind equalization and channel estimation in coherent optical communications
+    using variational autoencoders,"
     IEEE JSAC, vol. 40, no. 9, pp. 2529-2539, Sep. 2022.
     """
 
@@ -2580,11 +2568,9 @@ class VAE_LE_DP_IQ(torch.nn.Module):
         self.optimizer.add_param_group({"params": self.h_est})
 
     def forward(self, y):
-        # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
         num_samps = y.shape[1]
-        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
 
         out = []
         out_q = []
@@ -2607,7 +2593,6 @@ class VAE_LE_DP_IQ(torch.nn.Module):
             # if i % (20000//self.block_size) == 0 and i != 0:
             # print("Updating learning rate")
             # self.update_lr(self.lr * 0.5)
-            # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
                 k - index_padding,
                 k + self.sps * self.block_size + index_padding,
@@ -2677,7 +2662,6 @@ class VAE_LE_DP_IQ(torch.nn.Module):
             output_symbols = y_symb[
                 :, : self.block_size
             ]  # - self.butterfly_forward.num_taps // 2]
-            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
             out.append(
                 output_symbols
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
@@ -2959,11 +2943,9 @@ class VAE_LE_NxN(torch.nn.Module):
         self.optimizer.add_param_group({"params": self.butterfly_backward.parameters()})
 
     def forward(self, y):  # , x):
-        # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
         num_samps = y.shape[1]
-        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
         ##########################
         # phi_ref_full = []
         # phi_full = []
@@ -2997,7 +2979,6 @@ class VAE_LE_NxN(torch.nn.Module):
             # if i % (20000//self.block_size) == 0 and i != 0:
             # print("Updating learning rate")
             # self.update_lr(self.lr * 0.5)
-            # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
                 k - index_padding,
                 k + self.sps * self.block_size + index_padding,
@@ -3024,11 +3005,13 @@ class VAE_LE_NxN(torch.nn.Module):
             ##########################
             # temp_ref = ref_up[:,y_index]
             # ref =
-            # temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)
+            # temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(
+            #     self.num_channels,-1)
             # # .nonzero() downsamples to 1sps again
 
             # phi_ref = torch.angle(
-            #     y_symb_temp[:, self.cpe_window_length : -self.cpe_window_length] * ref.conj()
+            #     y_symb_temp[:, self.cpe_window_length :
+            #     -self.cpe_window_length] * ref.conj()
             # )
             ##########################
             if self.use_cpe_in_training:
@@ -3150,7 +3133,6 @@ class VAE_LE_NxN(torch.nn.Module):
             # output_symbols = y_symb[
             #     :, : self.block_size
             # ]  # - self.butterfly_forward.num_taps // 2]
-            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
             # out.append(
             #     output_symbols
             # )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
@@ -3484,11 +3466,9 @@ class VAE_LE_NxN_orig(torch.nn.Module):
         self.optimizer.add_param_group({"params": self.butterfly_backward.parameters()})
 
     def forward(self, y, x):
-        # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
         num_samps = y.shape[1]
-        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
         ##########################
         phi_ref_full = []
         phi_full = []
@@ -3520,7 +3500,6 @@ class VAE_LE_NxN_orig(torch.nn.Module):
             # if i % (20000//self.block_size) == 0 and i != 0:
             # print("Updating learning rate")
             # self.update_lr(self.lr * 0.5)
-            # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
                 k - index_padding,
                 k + self.sps * self.block_size + index_padding,
@@ -3666,7 +3645,6 @@ class VAE_LE_NxN_orig(torch.nn.Module):
             # output_symbols = y_symb[
             #     :, : self.block_size
             # ]  # - self.butterfly_forward.num_taps // 2]
-            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
             # out.append(
             #     output_symbols
             # )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
@@ -3977,7 +3955,6 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         # )
 
     def forward(self, y):
-        # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
         assert (
@@ -3985,7 +3962,6 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         )  # TODO: implement for both cases
 
         num_samps = y.shape[1]
-        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
 
         out = []
         out_q = []
@@ -4007,18 +3983,8 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             dtype=y.dtype,
             device=y.device,
         )  # shift register with dim: N_phi_ave, num. of channels, block_size*sps
-        # temp_phi = torch.zeros(self.N_phi_ave, dtype=y.dtype, device=y.device)
-        # temp_ref = torch.zeros(self.N_phi_ave, y.shape[0], self.block_size, dtype=y.dtype, device=y.device)
 
         y_pad = self.pad_func(y)
-        # ref_pad = self.pad_func(x)
-        # # init ref matrix
-        # temp_eqIn[...] = y[:, 0:self.sps*self.block_size + 2*index_padding]
-        # for jj in range(0,self.N_phi_ave//2):
-        #     temp_eqIn[...] = y[:, jj+1:jj+1+self.sps*self.block_size+2*index_padding]
-        # temp_eqIn[self.N_phi_ave//2 + jj,:,jj:] = y[:, : -jj + self.sps *
-        # self.block_size + 2*index_padding]  # earlier in time
-
         for i, k in enumerate(
             range(
                 index_padding,
@@ -4032,34 +3998,17 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             # if i % (20000//self.block_size) == 0 and i != 0:
             # print("Updating learning rate")
             # self.update_lr(self.lr * 0.5)
-            # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
                 k - index_padding,  # padding alincluded in y_pad
                 k
                 + self.sps * self.block_size
                 + index_padding,  # times two since padding also doubles
             )
-            # ref_index = torch.arange(
-            #     i * self.symb_per_step + (index_padding+1)//2 + index_padding,
-            #     i * self.symb_per_step + (index_padding+1)//2 + index_padding + self.block_size,
-            # )
-
-            # for jj in range(0,self.N_phi_ave//2):
-            #     temp_eqIn[self.N_phi_ave//2 - jj-1,:,:] = y_pad[:, self.sps*jj+1+in_index]  # later in time
-            #     temp_eqIn[self.N_phi_ave//2 + jj,:,:] = y_pad[:, in_index - self.sps*jj]  # earlier in time
-            #     #temp_ref[...] = ref_pad[:, jj+1+ref_index]  # later in time
-            #     #temp_ref[...] = ref_pad[:, ref_index - jj]
-
             # Equalization will give sps * block_size samples (because we add
             # (num_taps - 1) in the beginning)
             y_hat = self.butterfly_forward(y_pad[:, in_index])
             # y_hat = self.butterfly_forward(temp_eqIn)[ : , : , 0 :: self.sps ]
 
-            # Downsample: floor(((sps*block_size-num_taps+1)/sps) = floor(block_size-(num_taps-1)/sps)
-            # y_symb_temp = y_hat[
-            #     self.N_phi_ave//2, :, :  #0 :: self.sps
-            # ].squeeze()
-            # y_symb = torch.empty_like(y_symb_temp)
             y_symb_temp = y_hat[
                 :, 0 :: self.sps
             ]  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
@@ -4159,45 +4108,6 @@ class VAE_LE_flex_NxN(torch.nn.Module):
                     * self.demapper.noise_sigma.detach().clone(),
                 )
 
-            # # y_index = in_index[
-            # #     (self.butterfly_forward.num_taps - 1)
-            # #     // 2 : -((self.butterfly_forward.num_taps - 1) // 2)
-            # # ]
-            # # temp_symb = temp_symb.roll(shifts=(1), dims=(0))
-            # ref_index = in_index[
-            #     (self.butterfly_forward.num_taps - 1) : ] +
-            #     (self.butterfly_forward.num_taps + 1)*self.sps + 86
-            # temp_symb[0,:,:] = temp_ref[
-            #     temp_ref.nonzero(as_tuple=True)].reshape(
-            #     self.num_channels,-1)
-            #     temp_ref.nonzero(as_tuple=True)].reshape(
-            #     self.num_channels,-1)
-            # ref = temp_ref[self.N_phi_ave//2, :, :]
-
-            # if self.use_cpe == True:
-            #     # N_phi_ave = self.N_phi_ave
-            #     phi_off = (torch.angle(y_hat) - torch.angle(temp_ref)).detach() # unwrap necessary?
-            #     # y_phi_sum = torch.zeros_like(y_symb)[:,:-N_phi_ave]
-            #     # self.moving_ave(torch.exp(1j*phi_off[16,:,:]))
-            #     # for ii in range(N_phi_ave):
-            #     #     y_phi_sum += torch.exp(1j*phi_off[:,ii:-(N_phi_ave-ii)])    # sum in the complex domain
-            #     phi_ma = torch.angle(torch.sum(torch.exp(1j*phi_off) , dim=0) )
-            #     ref_loss = ref *torch.exp(1j*phi_ma)
-            #     loss = self.loss_func( y_symb.real, ref_loss.real ) + self.loss_func( y_symb.imag, ref_loss.imag)
-            #     # for cc in range(self.num_channels):
-            #     #     ref[cc,:] *= torch.exp(1j*self.cpe(y_symb[cc,:])[1])
-            # loss = self.loss_func(y_symb.real, ref.real) + ...
-            #     phi_plot.append(phi_ma)
-            # else:
-            #     loss = self.loss_func(y_symb.real, ref.real) + ...
-
-            # # print("noise_sigma: ", self.demapper.noise_sigma)
-            # loss.backward()
-            # self.optimizer.step()
-            # # self.optimizer_var.step()
-            # self.optimizer.zero_grad()
-            # # self.optimizer_var.zero_grad()
-
             # what about odd symbols_per_step?
             if i == 0:
                 ind_out = torch.arange(0, (self.block_size + self.symb_per_step) // 2)
@@ -4213,7 +4123,6 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             output_symbols = y_symb_temp[  # y_symb[
                 :, ind_out
             ]  # - self.butterfly_forward.num_taps // 2]
-            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
             out.append(
                 output_symbols
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
@@ -4509,14 +4418,12 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         # )
 
     def forward(self, y):
-        # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
         # assert self.N_phi_ave < self.butterfly_forward.num_taps     # TODO:
         # implement for both cases
 
         num_samps = y.shape[1]
-        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
 
         out = []
         out_q = []
@@ -4540,8 +4447,6 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             dtype=y.dtype,
             device=y.device,
         )  # shift register with dim: N_phi_ave, num. of channels, block_size*sps
-        # temp_phi = torch.zeros(self.N_phi_ave, dtype=y.dtype, device=y.device)
-        # temp_ref = torch.zeros(self.N_phi_ave, y.shape[0], self.block_size, dtype=y.dtype, device=y.device)
 
         y_pad = y  # self.pad_func(y)
         # ref_pad = self.pad_func(x)
@@ -4565,34 +4470,18 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             # if i % (20000//self.block_size) == 0 and i != 0:
             # print("Updating learning rate")
             # self.update_lr(self.lr * 0.5)
-            # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
                 k - index_padding,  # padding alincluded in y_pad
                 k
                 + self.sps * self.block_size
                 + index_padding,  # times two since padding also doubles
             )
-            # ref_index = torch.arange(
-            #     i * self.symb_per_step + (index_padding+1)//2 + index_padding,
-            #     i * self.symb_per_step + (index_padding+1)//2 + index_padding + self.block_size,
-            # )
-
-            # for jj in range(0,self.N_phi_ave//2):
-            #     temp_eqIn[self.N_phi_ave//2 - jj-1,:,:] = y_pad[:, self.sps*jj+1+in_index]  # later in time
-            #     temp_eqIn[self.N_phi_ave//2 + jj,:,:] = y_pad[:, in_index - self.sps*jj]  # earlier in time
-            #     #temp_ref[...] = ref_pad[:, jj+1+ref_index]  # later in time
-            #     #temp_ref[...] = ref_pad[:, ref_index - jj]
 
             # Equalization will give sps * block_size samples (because we add
             # (num_taps - 1) in the beginning)
             y_hat = self.butterfly_forward(y_pad[:, in_index])
             # y_hat = self.butterfly_forward(temp_eqIn)[ : , : , 0 :: self.sps ]
 
-            # Downsample: floor(((sps*block_size-num_taps+1)/sps) = floor(block_size-(num_taps-1)/sps)
-            # y_symb_temp = y_hat[
-            #     self.N_phi_ave//2, :, :  #0 :: self.sps
-            # ].squeeze()
-            # y_symb = torch.empty_like(y_symb_temp)
             y_symb_temp = y_hat[
                 :, 0 :: self.sps
             ]  # ---> y[0,(self.butterfly_forward.num_taps + 1)//2 +1 ::self.sps]
@@ -4695,45 +4584,6 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
                     * self.demapper.noise_sigma.detach().clone(),
                 )
 
-            # # y_index = in_index[
-            # #     (self.butterfly_forward.num_taps - 1)
-            # #     // 2 : -((self.butterfly_forward.num_taps - 1) // 2)
-            # # ]
-            # # temp_symb = temp_symb.roll(shifts=(1), dims=(0))
-            # ref_index = in_index[
-            #     (self.butterfly_forward.num_taps - 1) : ] +
-            #     (self.butterfly_forward.num_taps + 1)*self.sps + 86
-            # temp_symb[0,:,:] = temp_ref[
-            #     temp_ref.nonzero(as_tuple=True)].reshape(
-            #     self.num_channels,-1)
-            #     temp_ref.nonzero(as_tuple=True)].reshape(
-            #     self.num_channels,-1)
-            # ref = temp_ref[self.N_phi_ave//2, :, :]
-
-            # if self.use_cpe == True:
-            #     # N_phi_ave = self.N_phi_ave
-            #     phi_off = (torch.angle(y_hat) - torch.angle(temp_ref)).detach() # unwrap necessary?
-            #     # y_phi_sum = torch.zeros_like(y_symb)[:,:-N_phi_ave]
-            #     # self.moving_ave(torch.exp(1j*phi_off[16,:,:]))
-            #     # for ii in range(N_phi_ave):
-            #     #     y_phi_sum += torch.exp(1j*phi_off[:,ii:-(N_phi_ave-ii)])    # sum in the complex domain
-            #     phi_ma = torch.angle(torch.sum(torch.exp(1j*phi_off) , dim=0) )
-            #     ref_loss = ref *torch.exp(1j*phi_ma)
-            #     loss = self.loss_func( y_symb.real, ref_loss.real ) + self.loss_func( y_symb.imag, ref_loss.imag)
-            #     # for cc in range(self.num_channels):
-            #     #     ref[cc,:] *= torch.exp(1j*self.cpe(y_symb[cc,:])[1])
-            # loss = self.loss_func(y_symb.real, ref.real) + ...
-            #     phi_plot.append(phi_ma)
-            # else:
-            #     loss = self.loss_func(y_symb.real, ref.real) + ...
-
-            # # print("noise_sigma: ", self.demapper.noise_sigma)
-            # loss.backward()
-            # self.optimizer.step()
-            # # self.optimizer_var.step()
-            # self.optimizer.zero_grad()
-            # # self.optimizer_var.zero_grad()
-
             # what about odd symbols_per_step?
             if i == 0:
                 ind_out = torch.arange(0, (self.block_size + self.symb_per_step) // 2)
@@ -4749,7 +4599,6 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             output_symbols = y_symb[  # y_symb_temp[ #y_symb[
                 :, ind_out
             ]  # - self.butterfly_forward.num_taps // 2]
-            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
             out.append(
                 output_symbols
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
@@ -4991,7 +4840,6 @@ class VQVAE_LE_DP(torch.nn.Module):
         # self.demapper.noise_sigma.retain_grad = True
         # self.optimizer.add_param_group({"params": self.demapper.noise_sigma})
 
-        # self.optimizer_var = torch.optim.Adam(
         #     [self.demapper.noise_sigma],
         #     lr=0.5,  # 0.5e-2,
         # )
@@ -5018,11 +4866,9 @@ class VQVAE_LE_DP(torch.nn.Module):
         # self.optimizer.add_param_group({"params": self.demapper.noise_sigma})
 
     def forward(self, y):
-        # We need to produce enough q values on each forward pass such that we can
         # calculate the ELBO loss in the backward pass & update the taps
 
         num_samps = y.shape[1]
-        # samples_per_step = self.butterfly_forward.num_taps + self.block_size
 
         out = []
         out_q = []
@@ -5045,7 +4891,6 @@ class VQVAE_LE_DP(torch.nn.Module):
             # if i % (20000//self.block_size) == 0 and i != 0:
             # print("Updating learning rate")
             # self.update_lr(self.lr * 0.5)
-            # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
                 k - index_padding,
                 k + self.sps * self.block_size + index_padding,
@@ -5119,7 +4964,6 @@ class VQVAE_LE_DP(torch.nn.Module):
             output_symbols = y_symb[
                 :, : self.block_size
             ]  # - self.butterfly_forward.num_taps // 2]
-            # logger.debug("VAE LE num output symbols: %s", output_symbols.shape[1])
             out.append(
                 output_symbols
             )  # out.append(y_symb[:,:num_samps-self.butterfly_forward.num_taps +1])
@@ -5383,7 +5227,6 @@ class PilotAEQ_DP(torch.nn.Module):
             regression_seq = y_cut.clone()[:, : self.pilot_sequence_up.shape[1]]
         elif eq_method in ("ZF", "ZFadv"):
             regression_seq = self.pilot_sequence_up.clone()
-            # regression_seq = torch.concatenate((torch.zeros((2,1),dtype=torch.complex64),self.pilot_sequence_up.clone()))
         elif eq_method in ("LMSZF"):
             regression_seq = (
                 torch.sqrt(torch.as_tensor(self.lmszf_weight))
@@ -5411,7 +5254,6 @@ class PilotAEQ_DP(torch.nn.Module):
                         regression_seq = y_cut.clone()
                     elif self.method in ("ZF", "ZFadv"):
                         regression_seq = self.pilot_sequence_up.clone()
-                        # regression_seq = torch.concatenate((torch.zeros((2,1),dtype=torch.complex64),self.pilot_sequence_up.clone()))
                     elif self.method == "LMSZF":
                         regression_seq = (
                             torch.sqrt(torch.as_tensor(self.lmszf_weight))
@@ -5505,7 +5347,8 @@ class PilotAEQ_DP(torch.nn.Module):
                     self.sps,
                 )
                 if self.decay_lr:
-                    # num_steps is not exactly the number of steps due to block size constraints, but
+                    # num_steps is not exactly the number of steps due to block size
+                    # constraints, but
                     # the learning rate will be linearly interpolated nonetheless
                     lr = self.lr_start * (
                         ((self.lr_end / self.lr_start - 1) / num_steps) * i + 1
@@ -5530,7 +5373,6 @@ class PilotAEQ_DP(torch.nn.Module):
                         )
                     )
                     lr = torch.tensor([lr[0], lr[1], lr[1], lr[0]]).unsqueeze(1)
-                    # logger.info("lr: %s", lr.numpy())
                 if i > 0 and i % self.block_size == 0:
                     if self.regularize:
                         regularize_param = 1e-3
@@ -5698,7 +5540,6 @@ class AEQ_SP(torch.nn.Module):
             ),
         )
         self.taps[self.taps.shape[0] // 2] = 1.0
-        # Do some clever initalization, first only equalize x-pol and then enable y-pol
 
     def reset(self):
         """Reset :py:class:`AEQ_SP`."""
@@ -5717,7 +5558,6 @@ class AEQ_SP(torch.nn.Module):
         e = torch.zeros(
             ((num_samp - equalizer_length) // self.sps), dtype=torch.float32
         )
-        # logger.debug("CMA loop num: %s", reset_number)
         R = self.R  # 1.0
         lr = self.lr  # 1e-3
         out = torch.zeros(
