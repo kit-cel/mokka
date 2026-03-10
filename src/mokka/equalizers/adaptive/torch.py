@@ -1933,7 +1933,7 @@ class LMS_NxN(torch.nn.Module):
 ##########################################################################
 
 ##########################################################################
-## Variational Autoencoer based Equalizer ###############################
+# Variational Autoencoer based Equalizer #################################
 ##########################################################################
 
 
@@ -2814,7 +2814,7 @@ class VAE_LE_NxN(torch.nn.Module):
                 "angles_per_quadrant", torch.as_tensor(angles_per_quadrant)
             )
         self.mode = mode
-        ########## Equalizer ############
+        # Equalizer #
         if taps_EQ is None:
             if num_taps_EQ is None:
                 raise ValueError(
@@ -2836,7 +2836,7 @@ class VAE_LE_NxN(torch.nn.Module):
                 timedomain=True,
                 mode=mode,
             )
-        ########## Estimator ############
+        # Estimator #
         if taps_EST is None:
             if num_taps_EST is None:
                 raise ValueError(
@@ -3339,7 +3339,7 @@ class VAE_LE_NxN_orig(torch.nn.Module):
                 "angles_per_quadrant", torch.as_tensor(angles_per_quadrant)
             )
         self.mode = mode
-        ########## Equalizer ############
+        # Equalizer #
         if taps_EQ is None:
             if num_taps_EQ is None:
                 raise ValueError(
@@ -3361,7 +3361,7 @@ class VAE_LE_NxN_orig(torch.nn.Module):
                 timedomain=True,
                 mode=mode,
             )
-        ########## Estimator ############
+        # Estimator #
         if taps_EST is None:
             if num_taps_EST is None:
                 raise ValueError(
@@ -3831,7 +3831,7 @@ class VAE_LE_flex_NxN(torch.nn.Module):
         # taps = torch.zeros(8,8,151, dtype=torch.complex64)
         # taps[:,:,1:] = torch.from_numpy(weigh.reshape(8,8,150)).permute(1,0,2)
 
-        ########## Equalizer ############
+        # Equalizer #
         if taps_EQ is None:
             if num_taps_EQ is None:
                 raise ValueError(
@@ -3855,7 +3855,7 @@ class VAE_LE_flex_NxN(torch.nn.Module):
                 mode=mode,
             )
             self.pad_func = torch.nn.ConstantPad1d((taps_EQ.shape[-1] - 1) // 2, 0)
-        ########## Estimator ############
+        # Estimator #
         if taps_EST is None:
             if num_taps_EST is None:
                 raise ValueError(
@@ -4357,7 +4357,7 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
         # taps = torch.zeros(8,8,151, dtype=torch.complex64)
         # taps[:,:,1:] = torch.from_numpy(weigh.reshape(8,8,150)).permute(1,0,2)
 
-        ########## Equalizer ############
+        # Equalizer #
         if taps_EQ is None:
             if num_taps_EQ is None:
                 raise ValueError(
@@ -4383,7 +4383,7 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             self.pad_func = torch.nn.ConstantPad1d(
                 (taps_EQ.shape[-1] - 1) // 2 + cpe_window_length * sps, 0
             )
-        ########## Estimator ############
+        # Estimator #
         if taps_EST is None:
             if num_taps_EST is None:
                 raise ValueError(
