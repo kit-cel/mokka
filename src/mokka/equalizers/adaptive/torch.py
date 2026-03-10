@@ -1127,11 +1127,10 @@ class MSEflex_NxN(torch.nn.Module):
             # self.update_lr(self.lr * 0.5)
             # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
-                k,  # - index_padding,   # padding already included in y_pad
+                k,  # - index_padding,   # padding alincluded in y_pad
                 k
                 + self.sps * self.block_size
-                + 2
-                * index_padding,  # times two since padding already included in y_pad
+                + 2 * index_padding,  # times two since padding also doubles
             )
             ref_index = torch.arange(
                 i * self.symb_per_step + (index_padding + 1) // 2 + index_padding,
@@ -1475,11 +1474,10 @@ class MSEflex_phiMA_NxN(torch.nn.Module):
             )
         ):
             in_index = torch.arange(
-                k,  # - index_padding,   # padding already included in y_pad
+                k,  # - index_padding,   # padding alincluded in y_pad
                 k
                 + self.sps * self.block_size
-                + 2
-                * index_padding,  # times two since padding already included in y_pad
+                + 2 * index_padding,  # times two since padding also doubles
             )
             ref_index = torch.arange(
                 i * self.symb_per_step + (index_padding + 1) // 2 + index_padding,
@@ -1813,9 +1811,8 @@ class LMS_NxN(torch.nn.Module):
             # self.update_lr(self.lr * 0.5)
             # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
-                k,  # - index_padding,   # padding already included in y_pad
-                k
-                + self.butterfly_forward.num_taps,  # times two since padding already included in y_pad
+                k,  # - index_padding,   # padding alincluded in y_pad
+                k + self.butterfly_forward.num_taps,  # padding doubles
             )
             ref_index = torch.arange(
                 i + (index_padding + 1) // 2 + index_padding - self.N_phi_ave // 2,
@@ -1957,7 +1954,7 @@ def ELBO_DP(
     N = y.shape[1]
     # Now we have two polarizations in the first dimension
     # We assume the same transmit constellation for both, calculating
-    # q needs to be shaped 2 x N x M  -> for each observation on each polarization we
+    # q needs to be shaped 2 x N x M -> for each observation we
     # have M q-values and we have M constellation symbols
     L = butterfly_filter.taps.shape[1]
     L_offset = (L - 1) // 2
@@ -2072,7 +2069,7 @@ def ELBO_NxN(
     num_channels = y.shape[0]
     # Now we have two polarizations in the first dimension
     # We assume the same transmit constellation for both, calculating
-    # q needs to be shaped num_channels x N x M  -> for each observation on each polarization we have M q-values
+    # q: num_channels x N x M -> M q-values per observation
     # we have M constellation symbols
     L = butterfly_filter.taps.shape[-1]
     L_offset = (L - 1) // 2
@@ -2125,7 +2122,7 @@ def ELBO_NxN(
             axis=-1,
         )
 
-    # Term A - sum all the things, but spare the first dimension, since the two polarizations
+    # Term A - sum all things, but spare first dimensionpolarizations
     # are sorta independent
     bias = 1e-14
     A = torch.sum(
@@ -2140,9 +2137,9 @@ def ELBO_NxN(
     # Precompute h \ast E_Q{x}
     h_conv_E_Q_x = butterfly_filter(
         E_Q_x
-    )  # Due to definition that we assume the symbol is at the center tap we remove (filter_length - 1)//2 at start and end
-    # Limit the length of y to the "computable space" because y depends on more past values than given
-    # We try to generate the received symbol sequence with the estimated symbol sequence
+    )  # Symbol at center tap, remove (filter_length-1)//2 at start/end
+    # Limit y to "computable space" (depends on more past values)
+    # Generate received symbol seq with estimated symbol seq
     C = torch.sum(
         y[:, L_offset:-L_offset].real ** 2 + y[:, L_offset:-L_offset].imag ** 2, axis=1
     )
@@ -2181,7 +2178,7 @@ def ELBO_DP_IQ(y, q, sps, amp_levels, h_est, p_amps=None):
     pol = 2  # dual-polarization
     # Now we have two polarizations in the first dimension
     # We assume the same transmit constellation for both, calculating
-    # q needs to be shaped 2 x N x M  -> for each observation on each polarization we have M q-values
+    # q needs to be shaped 2 x N x M -> for each observation we have M q-values
     # we have M constellation symbols
     L = h.shape[-1]
     L_offset = (L - 1) // 2
@@ -2233,7 +2230,7 @@ def ELBO_DP_IQ(y, q, sps, amp_levels, h_est, p_amps=None):
         Var_sum = torch.sum(Var[:, idx - j], dim=-1)
         E += h_absq[:, 0, j] * Var_sum[0] + h_absq[:, 1, j] * Var_sum[1]
 
-    # Term A - sum all the things, but spare the first dimension, since the two polarizations
+    # Term A - sum all things, but spare first dimensionpolarizations
     # are sorta independent
     bias = 1e-14
     A = torch.sum(
@@ -2242,8 +2239,8 @@ def ELBO_DP_IQ(y, q, sps, amp_levels, h_est, p_amps=None):
             (q[:, L_offset:-L_offset, :] / p_amps.unsqueeze(0).unsqueeze(0)) + bias
         ),
         dim=(1, 2),
-    )  # Limit the length of y to the "computable space" because y depends on more past values than given
-    # We try to generate the received symbol sequence with the estimated symbol sequence
+    )  # Limit y to "computable space" (depends on more past values)
+    # Generate received symbol seq with estimated symbol seq
     C = torch.sum(
         y[:, L_offset:-L_offset].real ** 2 + y[:, L_offset:-L_offset].imag ** 2, axis=1
     )
@@ -2972,7 +2969,7 @@ class VAE_LE_NxN(torch.nn.Module):
         var_out = []
         # We start our loop already at num_taps (cannot equalize start)
         # We will end the loop at num_samps - num_taps - sps*block_size
-        # We will process sps * block_size - 2 * num_taps (cut first/last block) the first and last block
+        # Process sps*block_size - 2*num_taps (cut first/last block)
         ##########################
         # ref_up = torch.zeros_like(y)
         # ref_up[:,::self.sps] = x[:,:y.shape[-1]//self.sps]
@@ -3025,7 +3022,9 @@ class VAE_LE_NxN(torch.nn.Module):
             # temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)
             # # .nonzero() downsamples to 1sps again
 
-            # phi_ref = torch.angle(y_symb_temp[:, self.cpe_window_length : -self.cpe_window_length] * ref.conj())
+            # phi_ref = torch.angle(
+            #     y_symb_temp[:, self.cpe_window_length : -self.cpe_window_length] * ref.conj()
+            # )
             ##########################
             if self.use_cpe_in_training:
                 y_symb_temp1 = y_symb_temp.clone() * (
@@ -3495,7 +3494,7 @@ class VAE_LE_NxN_orig(torch.nn.Module):
         var_out = []
         # We start our loop already at num_taps (cannot equalize start)
         # We will end the loop at num_samps - num_taps - sps*block_size
-        # We will process sps * block_size - 2 * num_taps (cut first/last block) the first and last block
+        # Process sps*block_size - 2*num_taps (cut first/last block)
         ##########################
         ref_up = torch.zeros_like(y)
         ref_up[:, :: self.sps] = x[:, : y.shape[-1] // self.sps]
@@ -4030,10 +4029,10 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             # self.update_lr(self.lr * 0.5)
             # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
-                k - index_padding,  # padding already included in y_pad
+                k - index_padding,  # padding alincluded in y_pad
                 k
                 + self.sps * self.block_size
-                + index_padding,  # times two since padding already included in y_pad
+                + index_padding,  # times two since padding also doubles
             )
             # ref_index = torch.arange(
             #     i * self.symb_per_step + (index_padding+1)//2 + index_padding,
@@ -4559,10 +4558,10 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             # self.update_lr(self.lr * 0.5)
             # logger.debug("VAE LE block: %s", i)
             in_index = torch.arange(
-                k - index_padding,  # padding already included in y_pad
+                k - index_padding,  # padding alincluded in y_pad
                 k
                 + self.sps * self.block_size
-                + index_padding,  # times two since padding already included in y_pad
+                + index_padding,  # times two since padding also doubles
             )
             # ref_index = torch.arange(
             #     i * self.symb_per_step + (index_padding+1)//2 + index_padding,
@@ -4846,7 +4845,7 @@ def VQVAE_loss_DP(
     N = y.shape[1]
     # Now we have two polarizations in the first dimension
     # We assume the same transmit constellation for both, calculating
-    # q needs to be shaped 2 x N x M  -> for each observation on each polarization we have M q-values
+    # q needs to be shaped 2 x N x M -> for each observation we have M q-values
     # we have M constellation symbols
     L = butterfly_filter.taps.shape[1]
     L_offset = (L - 1) // 2
@@ -4868,9 +4867,9 @@ def VQVAE_loss_DP(
     # Precompute h \ast E_Q{x}
     Est = butterfly_filter(
         temp_dec, mode="valid"
-    )  # Due to definition that we assume the symbol is at the center tap we remove (filter_length - 1)//2 at start and end
-    # Limit the length of y to the "computable space" because y depends on more past values than given
-    # We try to generate the received symbol sequence with the estimated symbol sequence
+    )  # Symbol at center tap, remove (filter_length-1)//2 at start/end
+    # Limit y to "computable space" (depends on more past values)
+    # Generate received symbol seq with estimated symbol seq
     recon_loss = torch.mean(torch.abs(y[:, L_offset:-L_offset] - Est) ** 2)
     commit_loss = torch.mean(torch.abs(dec - eq) ** 2)
 
@@ -4900,7 +4899,7 @@ def VQVAE_loss_DP_hard(
     N = y.shape[1]
     # Now we have two polarizations in the first dimension
     # We assume the same transmit constellation for both, calculating
-    # q needs to be shaped 2 x N x M  -> for each observation on each polarization we have M q-values
+    # q needs to be shaped 2 x N x M -> for each observation we have M q-values
     # we have M constellation symbols
     L = butterfly_filter.taps.shape[1]
     L_offset = (L - 1) // 2
@@ -4922,9 +4921,9 @@ def VQVAE_loss_DP_hard(
     # Precompute h \ast E_Q{x}
     Est = butterfly_filter(
         temp_dec, mode="valid"
-    )  # Due to definition that we assume the symbol is at the center tap we remove (filter_length - 1)//2 at start and end
-    # Limit the length of y to the "computable space" because y depends on more past values than given
-    # We try to generate the received symbol sequence with the estimated symbol sequence
+    )  # Symbol at center tap, remove (filter_length-1)//2 at start/end
+    # Limit y to "computable space" (depends on more past values)
+    # Generate received symbol seq with estimated symbol seq
     recon_loss = torch.mean(torch.abs(y[:, L_offset:-L_offset] - Est) ** 2)
     commit_loss = torch.mean(torch.abs(dec - eq) ** 2)
 
