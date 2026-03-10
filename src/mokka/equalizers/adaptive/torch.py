@@ -1199,10 +1199,14 @@ class MSEflex_NxN(torch.nn.Module):
             #     // 2 : -((self.butterfly_forward.num_taps - 1) // 2)
             # ]
             # temp_symb = temp_symb.roll(shifts=(1), dims=(0))
-            # #ref_index = in_index[ (self.butterfly_forward.num_taps - 1) : ] + (self.butterfly_forward.num_taps + 1)*self.sps + 86
-            # temp_ref = ref_up[:,y_index]
-            # temp_symb[0,:,:] = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again
-            # ref =
+            # ref_index = in_index[
+            #     (self.butterfly_forward.num_taps - 1) : ] +
+            #     (self.butterfly_forward.num_taps + 1)*self.sps + 86
+            # temp_symb[0,:,:] = temp_ref[
+            #     temp_ref.nonzero(as_tuple=True)].reshape(
+            #     self.num_channels,-1)
+            #     temp_ref.nonzero(as_tuple=True)].reshape(
+            #     self.num_channels,-1)
             # temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)
             # # .nonzero() downsamples to 1sps again
             ref = temp_ref[self.N_phi_ave // 2, :, :]
@@ -2506,7 +2510,8 @@ class VAE_LE_DP(torch.nn.Module):
 class VAE_LE_DP_IQ(torch.nn.Module):
     """
     Class that can be dropped in to perform equalization as in:
-    V. Lauinger, F. Buchali and L. Schmalen, "Blind equalization and channel estimation in coherent optical communications using variational autoencoders," IEEE JSAC, vol. 40, no. 9, pp. 2529-2539, Sep. 2022.
+    V. Lauinger, F. Buchali and L. Schmalen, "Blind equalization and channel estimation in coherent optical communications using variational autoencoders,"
+    IEEE JSAC, vol. 40, no. 9, pp. 2529-2539, Sep. 2022.
     """
 
     def __init__(
@@ -4159,10 +4164,14 @@ class VAE_LE_flex_NxN(torch.nn.Module):
             # #     // 2 : -((self.butterfly_forward.num_taps - 1) // 2)
             # # ]
             # # temp_symb = temp_symb.roll(shifts=(1), dims=(0))
-            # # #ref_index = in_index[ (self.butterfly_forward.num_taps - 1) : ] + (self.butterfly_forward.num_taps + 1)*self.sps + 86
-            # # temp_ref = ref_up[:,y_index]
-            # # temp_symb[0,:,:] = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again
-            # # ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again
+            # ref_index = in_index[
+            #     (self.butterfly_forward.num_taps - 1) : ] +
+            #     (self.butterfly_forward.num_taps + 1)*self.sps + 86
+            # temp_symb[0,:,:] = temp_ref[
+            #     temp_ref.nonzero(as_tuple=True)].reshape(
+            #     self.num_channels,-1)
+            #     temp_ref.nonzero(as_tuple=True)].reshape(
+            #     self.num_channels,-1)
             # ref = temp_ref[self.N_phi_ave//2, :, :]
 
             # if self.use_cpe == True:
@@ -4691,10 +4700,14 @@ class VAE_LE_overhead_NxN(torch.nn.Module):
             # #     // 2 : -((self.butterfly_forward.num_taps - 1) // 2)
             # # ]
             # # temp_symb = temp_symb.roll(shifts=(1), dims=(0))
-            # # #ref_index = in_index[ (self.butterfly_forward.num_taps - 1) : ] + (self.butterfly_forward.num_taps + 1)*self.sps + 86
-            # # temp_ref = ref_up[:,y_index]
-            # # temp_symb[0,:,:] = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again
-            # # ref = temp_ref[temp_ref.nonzero(as_tuple=True)].reshape(self.num_channels,-1)   # .nonzero() downsamples to 1sps again
+            # ref_index = in_index[
+            #     (self.butterfly_forward.num_taps - 1) : ] +
+            #     (self.butterfly_forward.num_taps + 1)*self.sps + 86
+            # temp_symb[0,:,:] = temp_ref[
+            #     temp_ref.nonzero(as_tuple=True)].reshape(
+            #     self.num_channels,-1)
+            #     temp_ref.nonzero(as_tuple=True)].reshape(
+            #     self.num_channels,-1)
             # ref = temp_ref[self.N_phi_ave//2, :, :]
 
             # if self.use_cpe == True:
