@@ -193,7 +193,7 @@ class ButterflyNxN(torch.nn.Module):
         """
         Initialize ButterflyNxN Filter.
 
-        :param taps:      filter taps for initialization.
+        :param taps:      filter taps for initialization in the shape [out_channels, in_channels, filter_length]
         :param num_taps:  number of taps if no filter taps are provided for
                           initialization
         :param num_channels:  number of channels
@@ -212,12 +212,7 @@ class ButterflyNxN(torch.nn.Module):
                 dtype=torch.complex64,
             )
             for diag_filter in range(num_channels):
-                filter_taps[diag_filter, diag_filter, (num_taps - 1) // 2] = (
-                    0.5 + 1j * 0
-                )
-                filter_taps[diag_filter, diag_filter, (num_taps - 1) // 2 + 1] = (
-                    0.5 + 1j * 0
-                )  # 1.0+1j*0  # filter h_ij with i=j (diagonal of MIMO matrix) are initialized with Dirac
+                filter_taps[diag_filter, diag_filter, (num_taps) // 2] = 1.0
             self.num_taps = num_taps
         else:
             assert (taps.dim() == 2 and taps.size()[0] == num_channels**2) or (
@@ -229,7 +224,6 @@ class ButterflyNxN(torch.nn.Module):
             self.num_taps = taps.size()[-1]
         self.num_channels = num_channels
         self.mode = mode
-        # We store h_xx, h_xy, h_yy, h_yx
         if trainable == True:
             self.register_parameter("taps", torch.nn.Parameter(filter_taps))
         elif trainable == False:
