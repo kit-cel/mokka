@@ -2712,7 +2712,7 @@ def update_adaptive(y_hat_sym, pilot_seq, regression_seq, idx, length, sps):
     # idx_up = idx * sps
 
     # print("Using regression sequence at indices: ", idx_up, " to ", idx_up + length)
-    result = e_k * regression_seq.conj().resolve_conj()
+    result = e_k * torch.flip(regression_seq.conj().resolve_conj(), dims=(0,))
     return result, e_k
 
 
