@@ -2712,7 +2712,7 @@ def update_adaptive(y_hat_sym, pilot_seq, regression_seq, idx, length, sps):
     # idx_up = idx * sps
 
     # print("Using regression sequence at indices: ", idx_up, " to ", idx_up + length)
-    result = e_k * torch.flip(regression_seq.conj().resolve_conj(), dims=(0,))
+    result = e_k * regression_seq.conj().resolve_conj()
     return result, e_k
 
 
@@ -5314,6 +5314,7 @@ class PilotAEQ_DP(torch.nn.Module):
                         :, i * self.sps : i * self.sps + equalizer_length
                     ] = update_seq
 
+                # hxx
                 u[0, i, :], e00 = self.update(
                     out[0, :],
                     self.pilot_sequence[0, eq_offset:],
@@ -5322,6 +5323,7 @@ class PilotAEQ_DP(torch.nn.Module):
                     equalizer_length,
                     self.sps,
                 )
+                # hxy
                 u[1, i, :], e01 = self.update(
                     out[0, :],
                     self.pilot_sequence[0, eq_offset:],
@@ -5330,6 +5332,7 @@ class PilotAEQ_DP(torch.nn.Module):
                     equalizer_length,
                     self.sps,
                 )
+                # hyy
                 u[2, i, :], e11 = self.update(
                     out[1, :],
                     self.pilot_sequence[1, eq_offset:],
@@ -5338,6 +5341,7 @@ class PilotAEQ_DP(torch.nn.Module):
                     equalizer_length,
                     self.sps,
                 )
+                # hyx
                 u[3, i, :], e10 = self.update(
                     out[1, :],
                     self.pilot_sequence[1, eq_offset:],
