@@ -134,7 +134,7 @@ class CMA(torch.nn.Module):
             if i == self.singularity_length and self.no_singularity:
                 # We eliminate singularity in the 2x2 case
                 self.butterfly_filter.taps[1, 0, :] = -1 * torch.flip(
-                    self.butterfly_filter.taps[0, 1:].conj().resolve_conj(), dims=(0,)
+                    self.butterfly_filter.taps[0, 1, :].conj().resolve_conj(), dims=(0,)
                 )
                 self.butterfly_filter.taps[1, 1, :] = torch.flip(
                     self.butterfly_filter.taps[0, 0, :].conj().resolve_conj(), dims=(0,)
