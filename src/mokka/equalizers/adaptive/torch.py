@@ -5513,6 +5513,7 @@ class PilotAEQ_SP(torch.nn.Module):
         # Add some padding in the start
         self.u = u.clone()
         self.e = e.clone()
+        self.filter_taps = filter_taps.clone()
         self.peak_distortion = peak_distortion.clone()
         out = torch.cat((torch.zeros((100,), dtype=torch.complex64), out), dim=0)
         return out
