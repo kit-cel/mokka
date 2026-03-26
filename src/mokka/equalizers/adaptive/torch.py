@@ -120,6 +120,16 @@ class CMA(torch.nn.Module):
             (num_samp - equalizer_length) // self.sps,
             dtype=torch.complex64,
         )
+        filter_taps = torch.zeros(
+            (
+                self.num_channels,
+                self.num_channels,
+                (num_samp - equalizer_length) // self.sps,
+                equalizer_length,
+            ),
+            dtype=torch.complex64,
+        )
+
         # We try to put the symbol of interest in the center tap of the equalizer
         eq_offset = (equalizer_length) // 2
         if equalizer_length % 2:
@@ -143,6 +153,7 @@ class CMA(torch.nn.Module):
             out_tmp = self.butterfly_filter(y[:, in_index])
             out[:, i] = out_tmp.squeeze()
             e[:, i] = R - torch.pow(torch.abs(out[:, i]), 2)
+            filter_taps[:, :, i, :] = self.butterfly_filter.taps.detach().clone()
             update = torch.empty_like(self.butterfly_filter.taps)
             for ninput in range(self.num_channels):
                 for output in range(self.num_channels):
