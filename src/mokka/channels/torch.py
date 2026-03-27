@@ -2147,25 +2147,27 @@ class PMDPDLChannel(torch.nn.Module):
         return torch.cat((h_x, h_y), dim=0)
 
 
-def decompose_stokes_rotation(J):
+def decompose_stokes_rotation(J, non_unitary=False):
     """
     Decompose a rotation in Stokes' space into angles.
 
     Input Jones matrix must be unitary. We use the description of the rotation.
 
     :param J: Jones matrix to decompose
+    :param non_unitary: Skip the check for unitary matrices, in reality we have noise
     :returns: Tuple of (theta, phi, psi)
     """
 
-    # Check if J is unitary
-    I = J @ J.conj().resolve_conj().T
-    try:
-        assert torch.allclose(I.real, torch.eye(2), atol=1e-5)
-    except AssertionError:
-        logger.error(
-            f"Input matrix J is not unitary: I={I}",
+    if not non_unitary:
+        # Check if J is unitary
+        I = J @ J.conj().resolve_conj().T
+        try:
+            assert torch.allclose(I.real, torch.eye(2), atol=1e-5)
+        except AssertionError:
+            logger.error(
+                f"Input matrix J is not unitary: I={I}",
         )
-        raise AssertionError
+            raise AssertionError
 
     # First determine phase rotation
     theta = torch.angle(J[0, 0])
