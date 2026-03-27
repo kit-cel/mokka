@@ -2173,10 +2173,15 @@ def decompose_stokes_rotation(J, non_unitary=False):
     theta = torch.angle(J[0, 0])
 
     # Remove phase shift
-    J_rot = torch.tensor([[torch.exp(-1j * theta), 0], [0, torch.exp(1j * theta)]]) @ J
+    J_rot = torch.as_tensor([[torch.exp(-1j * theta), 0], [0, torch.exp(1j * theta)]]) @ J
 
     # Determine phi
-    phi = torch.acos(J_rot[0, 0].real)
+    if non_unitary:
+        # Special care for non_unitary case since we can end up outside the definition of arccos
+        eps = 1e-8
+        phi = torch.acos(torch.clamp(J_rot[0,0].real, -1 + eps, 1 - eps))
+    else:
+        phi = torch.acos(J_rot[0, 0].real)
 
     # Determine psi
     psi = torch.angle(-1j / torch.sin(phi) * J_rot[0, 1]).real
