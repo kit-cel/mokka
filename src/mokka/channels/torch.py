@@ -2163,7 +2163,7 @@ def decompose_stokes_rotation(J):
         assert torch.allclose(I.real, torch.eye(2), atol=1e-5)
     except AssertionError:
         logger.error(
-            "Input matrix J is not unitary: I=%s",
+            f"Input matrix J is not unitary: I={I}",
         )
         raise AssertionError
 
