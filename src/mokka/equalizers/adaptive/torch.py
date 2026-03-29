@@ -166,6 +166,7 @@ class CMA(torch.nn.Module):
             self.butterfly_filter.taps = torch.nn.Parameter(
                 self.butterfly_filter.taps + 2 * lr * torch.flip(update, dims=(2,))
             )
+        self.filter_taps = filter_taps.detach().clone()
         self.out_e = e.detach().clone()
         return out
 
