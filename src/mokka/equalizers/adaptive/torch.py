@@ -166,8 +166,8 @@ class CMA(torch.nn.Module):
             self.butterfly_filter.taps = torch.nn.Parameter(
                 self.butterfly_filter.taps + 2 * lr * torch.flip(update, dims=(2,))
             )
-        self.filter_taps = filter_taps.detach().clone()
-        self.out_e = e.detach().clone()
+        self.filter_taps = filter_taps
+        self.out_e = e
         return out
 
     def get_error_signal(self):
@@ -5200,10 +5200,11 @@ class PilotAEQ_DP(torch.nn.Module):
         eq_offset = ((equalizer_length - 1) // 2) // self.sps
         num_steps = self.pilot_sequence.shape[1] - 2 * eq_offset
         num_samp = y_cut.shape[1]
+        # We only store updates for the length of the block_size
         u = torch.zeros(
             (
                 4,
-                (self.pilot_sequence.shape[1] - 2 * eq_offset),  # // self.sps,
+                self.block_size,
                 equalizer_length,
             ),
             dtype=torch.complex64,
@@ -5220,10 +5221,10 @@ class PilotAEQ_DP(torch.nn.Module):
             (4, (self.pilot_sequence.shape[1] - 2 * eq_offset)),
             dtype=torch.complex64,
         )
-        peak_distortion = torch.zeros(
-            (4, (self.pilot_sequence.shape[1] - 2 * eq_offset)),
-            dtype=torch.complex64,
-        )
+        # peak_distortion = torch.zeros(
+        #     (4, (self.pilot_sequence.shape[1] - 2 * eq_offset)),
+        #     dtype=torch.complex64,
+        # )
         out = torch.zeros(
             2, (num_samp - equalizer_length) // self.sps, dtype=torch.complex64
         )
@@ -5327,7 +5328,8 @@ class PilotAEQ_DP(torch.nn.Module):
                     ] = update_seq
 
                 # hxx
-                u[0, i, :], e00 = self.update(
+                block_idx = i % self.block_length
+                u[0, block_idx, :], e00 = self.update(
                     out[0, :],
                     self.pilot_sequence[0, eq_offset:],
                     regression_seq[0, in_index],
@@ -5336,7 +5338,7 @@ class PilotAEQ_DP(torch.nn.Module):
                     self.sps,
                 )
                 # hxy
-                u[1, i, :], e01 = self.update(
+                u[1, block_idx, :], e01 = self.update(
                     out[0, :],
                     self.pilot_sequence[0, eq_offset:],
                     regression_seq[1, in_index],
@@ -5345,7 +5347,7 @@ class PilotAEQ_DP(torch.nn.Module):
                     self.sps,
                 )
                 # hyy
-                u[2, i, :], e11 = self.update(
+                u[2, block_idx, :], e11 = self.update(
                     out[1, :],
                     self.pilot_sequence[1, eq_offset:],
                     regression_seq[1, in_index],
@@ -5354,7 +5356,7 @@ class PilotAEQ_DP(torch.nn.Module):
                     self.sps,
                 )
                 # hyx
-                u[3, i, :], e10 = self.update(
+                u[3, block_idx, :], e10 = self.update(
                     out[1, :],
                     self.pilot_sequence[1, eq_offset:],
                     regression_seq[0, in_index],
@@ -5396,23 +5398,16 @@ class PilotAEQ_DP(torch.nn.Module):
                             1 - regularize_param
                         ) * self.butterfly_filter.taps
                     update = (
-                        2 * lr * torch.mean(u[:, i - self.block_size : i, :], dim=1)
+                        2 * lr * torch.mean(u, dim=1)
                     )
                     self.butterfly_filter.taps = self.butterfly_filter.taps + update
                 filter_taps[:, i, :] = self.butterfly_filter.taps.clone()
                 e[:, i] = torch.stack((e00, e01, e11, e10))
-                peak_distortion[:, i] = torch.mean(
-                    e[:, i].unsqueeze(1)
-                    * self.pilot_sequence[(0, 0, 1, 1), i : i + 2 * eq_offset]
-                    .conj()
-                    .resolve_conj(),
-                    dim=1,
-                )
         # Add some padding in the start
         out = torch.cat((torch.zeros((2, 100), dtype=torch.complex64), out), dim=1)
-        self.u = u
+        # self.u = u
         self.e = e
-        self.peak_distortion = peak_distortion
+        # self.peak_distortion = peak_distortion
         self.filter_taps = filter_taps
         return out
 
