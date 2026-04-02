@@ -139,8 +139,8 @@ class CMA(torch.nn.Module):
         for i, k in enumerate(
             range(eq_offset, num_process_samples, self.sps * self.block_size)
         ):
-            if i % 20000 == 0 and i != 0:
-                lr = lr / 2.0
+            # if i % 20000 == 0 and i != 0:
+            #     lr = lr / 2.0
             if i == self.singularity_length and self.no_singularity:
                 # We eliminate singularity in the 2x2 case
                 self.butterfly_filter.taps[1, 0, :] = -1 * torch.flip(
