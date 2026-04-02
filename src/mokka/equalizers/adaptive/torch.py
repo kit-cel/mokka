@@ -5328,7 +5328,7 @@ class PilotAEQ_DP(torch.nn.Module):
                     ] = update_seq
 
                 # hxx
-                block_idx = i % self.block_length
+                block_idx = i % self.block_size
                 u[0, block_idx, :], e00 = self.update(
                     out[0, :],
                     self.pilot_sequence[0, eq_offset:],
