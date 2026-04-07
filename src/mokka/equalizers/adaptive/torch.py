@@ -5122,6 +5122,8 @@ class PilotAEQ_DP(torch.nn.Module):
         decay_lr=False,
         lr_start=1e-3,
         lr_end=1e-4,
+        with_cpe=False,
+        cpe_length=10,
     ):
         """
         Initialize :py:class:`PilotAEQ_DP`.
@@ -5173,6 +5175,8 @@ class PilotAEQ_DP(torch.nn.Module):
         self.lr_start = lr_start
         self.lr_end = lr_end
         self.decay_lr = decay_lr
+        self.with_cpe = with_cpe
+        self.cpe_length = cpe_length
 
     def reset(self):
         """Reset :py:class:`PilotAEQ_DP` object."""
@@ -5329,41 +5333,87 @@ class PilotAEQ_DP(torch.nn.Module):
 
                 # hxx
                 block_idx = i % self.block_size
-                u[0, block_idx, :], e00 = self.update(
-                    out[0, :],
-                    self.pilot_sequence[0, eq_offset:],
-                    regression_seq[0, in_index],
-                    i,
-                    equalizer_length,
-                    self.sps,
+                # Rewrite Update functions in here
+                e00 = e01 = self.pilot_sequence[0, eq_offset + i] - out[0, i]
+                e11 = e10 = self.pilot_sequence[1, eq_offset + i] - out[1, i]
+
+                ph_correct_vector = torch.as_tensor(1 + 0j)
+                # Improve convergence by correcting phase
+                if self.with_cpe:
+                    # Phase errors averaged over cpe_length
+                    ph_correct_vector = (
+                        torch.exp(
+                            1j
+                            * (
+                                out[:, i - self.cpe_length : i]
+                                * self.pilot_sequence[
+                                    :, eq_offset + i - self.cpe_length : i
+                                ]
+                                .conj()
+                                .resolve_conj()
+                            ).angle()
+                        )
+                        .sum()
+                        .conj()
+                        .resolve_conj()
+                    )
+
+                u[0, block_idx, :] = e00 * torch.flip(
+                    ph_correct_vector
+                    * regression_seq[0, in_index].conj().resolve_conj(),
+                    dims=(0,),
                 )
-                # hxy
-                u[1, block_idx, :], e01 = self.update(
-                    out[0, :],
-                    self.pilot_sequence[0, eq_offset:],
-                    regression_seq[1, in_index],
-                    i,
-                    equalizer_length,
-                    self.sps,
+                u[1, block_idx, :] = e00 * torch.flip(
+                    ph_correct_vector
+                    * regression_seq[1, in_index].conj().resolve_conj(),
+                    dims=(0,),
                 )
-                # hyy
-                u[2, block_idx, :], e11 = self.update(
-                    out[1, :],
-                    self.pilot_sequence[1, eq_offset:],
-                    regression_seq[1, in_index],
-                    i,
-                    equalizer_length,
-                    self.sps,
+                u[2, block_idx, :] = e11 * torch.flip(
+                    ph_correct_vector
+                    * regression_seq[1, in_index].conj().resolve_conj(),
+                    dims=(0,),
                 )
-                # hyx
-                u[3, block_idx, :], e10 = self.update(
-                    out[1, :],
-                    self.pilot_sequence[1, eq_offset:],
-                    regression_seq[0, in_index],
-                    i,
-                    equalizer_length,
-                    self.sps,
+                u[3, block_idx, :] = e11 * torch.flip(
+                    ph_correct_vector
+                    * regression_seq[0, in_index].conj().resolve_conj(),
+                    dims=(0,),
                 )
+
+                # u[0, block_idx, :], e00 = self.update(
+                #     out[0, :],
+                #     self.pilot_sequence[0, eq_offset:],
+                #     regression_seq[0, in_index],
+                #     i,
+                #     equalizer_length,
+                #     self.sps,
+                # )
+                # # hxy
+                # u[1, block_idx, :], e01 = self.update(
+                #     out[0, :],
+                #     self.pilot_sequence[0, eq_offset:],
+                #     regression_seq[1, in_index],
+                #     i,
+                #     equalizer_length,
+                #     self.sps,
+                # )
+                # # hyy
+                # u[2, block_idx, :], e11 = self.update(
+                #     out[1, :],
+                #     self.pilot_sequence[1, eq_offset:],
+                #     regression_seq[1, in_index],
+                #     i,
+                #     equalizer_length,
+                #     self.sps,
+                # )
+                # # hyx
+                # u[3, block_idx, :], e10 = self.update(
+                #     out[1, :],
+                #     self.pilot_sequence[1, eq_offset:],
+                #     regression_seq[0, in_index],
+                #     i,
+                #     equalizer_length,
+                #     self.sps,
+                # )
                 if self.decay_lr:
                     # num_steps is not exactly the number of steps due to block size
                     # constraints, but
