@@ -5204,6 +5204,7 @@ class PilotAEQ_DP(torch.nn.Module):
         eq_offset = ((equalizer_length - 1) // 2) // self.sps
         num_steps = self.pilot_sequence.shape[1] - 2 * eq_offset
         num_samp = y_cut.shape[1]
+        ph_error_vector = torch.as_tensor([[1 + 0j],[1 + 0j]])
         # We only store updates for the length of the block_size
         u = torch.zeros(
             (
@@ -5260,7 +5261,10 @@ class PilotAEQ_DP(torch.nn.Module):
             # (equalizer_length-1)//2
             # we need the symbols around the center symbol for equalization
             in_index = torch.arange(k - equalizer_length, k)
-            out_tmp = self.butterfly_filter(y_cut[:, in_index], "valid")
+            if self.with_cpe:
+                out_tmp = self.butterfly_filter(ph_error_vector.conj().resolve_conj() * y_cut[:, in_index], "valid")
+            else:
+                out_tmp = self.butterfly_filter(y_cut[:, in_index], "valid")
             out[:, i] = out_tmp.squeeze()
             # Out will contain samples starting with
             # ((filter_length-1)//2)//sps
@@ -5337,45 +5341,49 @@ class PilotAEQ_DP(torch.nn.Module):
                 e00 = e01 = self.pilot_sequence[0, eq_offset + i] - out[0, i]
                 e11 = e10 = self.pilot_sequence[1, eq_offset + i] - out[1, i]
 
-                ph_correct_vector = torch.as_tensor(1 + 0j)
                 # Improve convergence by correcting phase
-                if self.with_cpe:
+                if self.with_cpe and i >= self.cpe_length:
                     # Phase errors averaged over cpe_length
-                    ph_correct_vector = (
+                    ph_error_vector = (
+                        torch.exp( 1j *
                         torch.exp(
                             1j
                             * (
                                 out[:, i - self.cpe_length : i]
                                 * self.pilot_sequence[
-                                    :, eq_offset + i - self.cpe_length : i
+                                    :, eq_offset + i - self.cpe_length : eq_offset + i
                                 ]
                                 .conj()
                                 .resolve_conj()
                             ).angle()
                         )
-                        .sum()
-                        .conj()
-                        .resolve_conj()
-                    )
+                        .sum(dim=1)
+                        .angle()
+                        )[:, None]
+                   )
+                    if ph_error_vector.isnan().any():
+                        # Save results & errors and filter taps up until now
+                        self.out = out[:, :i]
+                        self.e = e[:, :i]
+                        self.filter_taps = filter_taps[:, :i, :]
+                        raise ValueError(f"Phase error is nan at sample {i} -> Equalizer crashed")
 
-                u[0, block_idx, :] = e00 * torch.flip(
-                    ph_correct_vector
-                    * regression_seq[0, in_index].conj().resolve_conj(),
+                # We correct with the phase error since we want to 
+                # Add the conjugated regression vector to our taps
+                u[0, block_idx, :] = e00 * ph_error_vector[0].squeeze() * torch.flip(
+                    regression_seq[0, in_index].conj().resolve_conj(),
                     dims=(0,),
                 )
-                u[1, block_idx, :] = e00 * torch.flip(
-                    ph_correct_vector
-                    * regression_seq[1, in_index].conj().resolve_conj(),
+                u[1, block_idx, :] = e00 * ph_error_vector[1].squeeze() * torch.flip(
+                    regression_seq[1, in_index].conj().resolve_conj(),
                     dims=(0,),
                 )
-                u[2, block_idx, :] = e11 * torch.flip(
-                    ph_correct_vector
-                    * regression_seq[1, in_index].conj().resolve_conj(),
+                u[2, block_idx, :] = e11 * ph_error_vector[1].squeeze() * torch.flip(
+                    regression_seq[1, in_index].conj().resolve_conj(),
                     dims=(0,),
                 )
-                u[3, block_idx, :] = e11 * torch.flip(
-                    ph_correct_vector
-                    * regression_seq[0, in_index].conj().resolve_conj(),
+                u[3, block_idx, :] = e11 * ph_error_vector[0].squeeze() *  torch.flip(
+                    regression_seq[0, in_index].conj().resolve_conj(),
                     dims=(0,),
                 )
 
