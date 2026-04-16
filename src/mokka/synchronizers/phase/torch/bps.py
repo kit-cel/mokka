@@ -26,7 +26,16 @@ class BPS(torch.nn.Module):
         avg_filter_type="tri",
         trainable=False,
     ):
-        """Construct the BPS class."""
+        """
+        Construct the BPS class.
+
+        :param Mtestangles: Number of test angles per sector
+        :param symbols: Constellation symbols to test
+        :param N: One-sided length of the averaging filter (2N + 1)
+        :param diff: Apply differentiable BPS algorithm
+        :param temperature_per_epoch: temperature for differentibale algorithm
+
+        """
         super(BPS, self).__init__()
         (
             self.Mtestangles,
