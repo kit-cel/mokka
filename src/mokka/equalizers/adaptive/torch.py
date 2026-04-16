@@ -5338,8 +5338,8 @@ class PilotAEQ_DP(torch.nn.Module):
                 # hxx
                 block_idx = i % self.block_size
                 # Rewrite Update functions in here
-                e00 = e01 = self.pilot_sequence[0, eq_offset + i] - out[0, i]
-                e11 = e10 = self.pilot_sequence[1, eq_offset + i] - out[1, i]
+                e00 = e01 = self.pilot_sequence[0, eq_offset + i] - out[0, i] * ph_error_vector[0,:].conj().resolve_conj()
+                e11 = e10 = self.pilot_sequence[1, eq_offset + i] - out[1, i] * ph_error_vector[1,:].conj().resolve_conj()
 
                 # Improve convergence by correcting phase
                 if self.with_cpe and i >= self.cpe_length:
