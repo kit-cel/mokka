@@ -577,8 +577,8 @@ class ConstellationDemapper(torch.nn.Module):
             if self.complex:
                 y = torch.stack(
                     (
-                        y[:, 0],
-                        y[:, 1],
+                        y[:, 0][:, None],
+                        y[:, 1][:, None],
                         *demod_args.split(1, -1),
                     ),
                     -1,
