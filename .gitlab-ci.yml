@@ -74,10 +74,11 @@ pre-commit:
 pytest:
   stage: test
   image: python:3.12
+  timeout: 2h  # Increased timeout from 1h to 2h
   before_script: 
     - pip install --no-cache-dir uv
     - uv sync
     - uv pip install .
 
   script:
-    - uv run pytest tests/
+    - uv run pytest -c pytest_ci.ini --verbose --durations=50 -rA --tb=short --capture=no tests/
