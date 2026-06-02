@@ -109,21 +109,6 @@ import pytest
 @pytest.mark.slow
 def test_SSFM_dualpol():
     """Test the SSFM for dual polarization."""
-    channel = channels.SSFM(
-        dt,
-        dz,
-        betap,
-        gamma,
-        P_input_lin,
-        length_span,
-        num_span,
-        amp_gain,
-        alphap,
-        alphadb,
-        amp_noise,
-        noise_figure,
-        padding,
-    )
     channel = channels.SSFMPropagationDualPol(
         dt, dz, alphaa_db, alphab_db, betapa, betapb, gamma, length_span, num_span
     )
