@@ -1,3 +1,4 @@
+import pytest
 from mokka.equalizers.adaptive import torch as adaptive_eq
 from mokka.mapping.torch import QAMConstellationMapper
 from mokka.utils.generators.torch import generate_bits
@@ -19,6 +20,7 @@ cma_test_symbols_2x2 = torch.stack(
 )
 
 
+@pytest.mark.slow
 def test_CMA_no_channel():
     with torch.no_grad():
         eq = adaptive_eq.CMA(R=1.0, sps=1, lr=1e-4)
@@ -34,6 +36,7 @@ def test_CMA_no_channel():
         )
 
 
+@pytest.mark.slow
 def test_CMA_no_channel_even_filter():
     with torch.no_grad():
         eq = adaptive_eq.CMA(R=1.0, sps=1, lr=1e-4, filter_length=30)
@@ -49,6 +52,7 @@ def test_CMA_no_channel_even_filter():
         )
 
 
+@pytest.mark.slow
 def test_CMA_linear_channel_flat():
     with torch.no_grad():
         h = torch.as_tensor(
@@ -72,6 +76,7 @@ def test_CMA_linear_channel_flat():
         )
 
 
+@pytest.mark.slow
 def test_CMA_linear_channel_ProakisA():
     with torch.no_grad():
         # h = torch.as_tensor(

@@ -11,6 +11,13 @@ filterwarnings = [
     "default:::mokka",
 ]
 
+# Test markers for categorization
+markers = [
+    "slow: marks tests as slow (deselect with '-m not slow')",
+    "integration: marks integration tests",
+    "unit: marks unit tests",
+]
+
 [tool.pydocstyle]
 add_select = "D417,D419"
 

@@ -103,17 +103,25 @@ def test_SSFM_singlepol():
     assert len(y) == num_samples
 
 
+import pytest
+
+
+@pytest.mark.slow
 def test_SSFM_dualpol():
-    amp = channels.EDFAAmpDualPol(  # noqa
-        span_length,
+    """Test the SSFM for dual polarization."""
+    channel = channels.SSFM(
+        dt,
+        dz,
+        betap,
+        gamma,
+        P_input_lin,
+        length_span,
+        num_span,
         amp_gain,
-        alphaa_db,
-        alphab_db,
+        alphap,
+        alphadb,
         amp_noise,
         noise_figure,
-        optical_carrier_frequency,
-        bw,
-        P_input_lin,
         padding,
     )
     channel = channels.SSFMPropagationDualPol(
@@ -126,6 +134,7 @@ def test_SSFM_dualpol():
     assert len(y2) == num_samples
 
 
+@pytest.mark.slow
 def test_SSFM_dualpol_circular():
     amp = channels.EDFAAmpDualPol(
         span_length,

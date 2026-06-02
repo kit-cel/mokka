@@ -1,3 +1,4 @@
+import pytest
 import mokka.pulseshaping.torch as pulseshape  # noqa
 from mokka.channels.torch import ComplexAWGN
 from mokka.utils import N0
@@ -15,6 +16,7 @@ def test_rrc_matched_filter():
     assert error.allclose(torch.as_tensor(0.0), atol=1e-3)
 
 
+@pytest.mark.slow
 def test_rrc_awgn_no_normalization():
     sps = 2
     snr = 25
@@ -36,6 +38,7 @@ def test_rrc_awgn_no_normalization():
     assert error.allclose(torch.as_tensor(snr, dtype=torch.float32), atol=1e-2)
 
 
+@pytest.mark.slow
 def test_rrc_awgn_normalization():
     sps = 2
     snr = 25
