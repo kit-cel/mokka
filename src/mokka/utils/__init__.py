@@ -15,7 +15,6 @@ from . import decorators  # noqa
 from . import generators  # noqa
 from . import bitops  # noqa
 
-
 # Plotting utilities
 
 

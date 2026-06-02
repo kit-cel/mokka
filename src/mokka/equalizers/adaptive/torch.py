@@ -5204,14 +5204,10 @@ class PilotAEQ_DP(torch.nn.Module):
         eq_offset = ((equalizer_length - 1) // 2) // self.sps
         num_steps = self.pilot_sequence.shape[1] - 2 * eq_offset
         num_samp = y_cut.shape[1]
-        ph_error_vector = torch.as_tensor([[1 + 0j],[1 + 0j]])
+        ph_error_vector = torch.as_tensor([[1 + 0j], [1 + 0j]])
         # We only store updates for the length of the block_size
         ph_errors = torch.zeros(
-            (
-                2,
-                self.pilot_sequence.shape[1] - 2 * eq_offset
-            ),
-            dtype=torch.complex64
+            (2, self.pilot_sequence.shape[1] - 2 * eq_offset), dtype=torch.complex64
         )
         u = torch.zeros(
             (
@@ -5281,23 +5277,19 @@ class PilotAEQ_DP(torch.nn.Module):
                 if self.preeq_method is not None and i == self.preeq_offset:
                     eq_method = self.method
 
-
                 if eq_method == "LMS":
                     regression_seq = y_idx.clone()
                 elif self.method in ("ZF", "ZFadv"):
                     regression_seq = self.pilot_sequence_up[:, in_index].clone()
                 elif self.method == "LMSZF":
                     regression_seq = (
-                        torch.sqrt(torch.as_tensor(self.lmszf_weight))
-                        * y_idx.clone()
+                        torch.sqrt(torch.as_tensor(self.lmszf_weight)) * y_idx.clone()
                         + torch.sqrt(1.0 - torch.as_tensor(self.lmszf_weight))
                         * self.pilot_sequence_up[:, in_index].clone()
                     )
 
                 elif self.method in ("noise"):
-                    regression_seq = torch.zeros_like(
-                        self.pilot_sequence_up
-                    ).normal_()
+                    regression_seq = torch.zeros_like(self.pilot_sequence_up).normal_()
 
                 if i == self.preeq_offset:
                     lr = self.lr
@@ -5356,9 +5348,9 @@ class PilotAEQ_DP(torch.nn.Module):
                 # Improve convergence by correcting phase
                 if self.with_cpe and i >= self.cpe_length:
                     # Phase errors averaged over cpe_length
-                    ph_error_vector = (
-                        torch.exp( 1j *
-                        torch.exp(
+                    ph_error_vector = torch.exp(
+                        1j
+                        * torch.exp(
                             1j
                             * (
                                 out[:, i - self.cpe_length : i]
@@ -5371,31 +5363,32 @@ class PilotAEQ_DP(torch.nn.Module):
                         )
                         .sum(dim=1)
                         .angle()
-                        )[:, None]
-                   )
+                    )[:, None]
                     if ph_error_vector.isnan().any():
                         # Save results & errors and filter taps up until now
                         self.out = out[:, :i]
                         self.e = e[:, :i]
                         self.filter_taps = filter_taps[:, :i, :]
-                        raise ValueError(f"Phase error is nan at sample {i} -> Equalizer crashed")
+                        raise ValueError(
+                            f"Phase error is nan at sample {i} -> Equalizer crashed"
+                        )
 
-                # We correct with the phase error since we want to 
+                # We correct with the phase error since we want to
                 # Add the conjugated regression vector to our taps
                 u[0, block_idx, :] = e00 * torch.flip(
-                        regression_seq[0, :].conj().resolve_conj(),
+                    regression_seq[0, :].conj().resolve_conj(),
                     dims=(0,),
                 )
                 u[1, block_idx, :] = e00 * torch.flip(
-                        regression_seq[1, :].conj().resolve_conj(),
+                    regression_seq[1, :].conj().resolve_conj(),
                     dims=(0,),
                 )
                 u[2, block_idx, :] = e11 * torch.flip(
-                        regression_seq[1, :].conj().resolve_conj(),
+                    regression_seq[1, :].conj().resolve_conj(),
                     dims=(0,),
                 )
                 u[3, block_idx, :] = e11 * torch.flip(
-                        regression_seq[0, :].conj().resolve_conj(),
+                    regression_seq[0, :].conj().resolve_conj(),
                     dims=(0,),
                 )
 
@@ -5467,9 +5460,7 @@ class PilotAEQ_DP(torch.nn.Module):
                         self.butterfly_filter.taps = (
                             1 - regularize_param
                         ) * self.butterfly_filter.taps
-                    update = (
-                        2 * lr * torch.mean(u, dim=1)
-                    )
+                    update = 2 * lr * torch.mean(u, dim=1)
                     self.butterfly_filter.taps = self.butterfly_filter.taps + update
                 filter_taps[:, i, :] = self.butterfly_filter.taps.clone()
                 e[:, i] = torch.stack((e00, e01, e11, e10))

@@ -689,14 +689,14 @@ class SSFMPropagationSinglePol(torch.nn.Module):
             # logger.info("SSFM Span %s/%s", span + 1, self.num_span.item())
             z = 0
             iter = 0
-            (h_2dz, h_dz, NOP2dz) = self.get_operators(2 * dz)
-            (h_dz, h_dz_2, NOPdz) = self.get_operators(dz)
+            h_2dz, h_dz, NOP2dz = self.get_operators(2 * dz)
+            h_dz, h_dz_2, NOPdz = self.get_operators(dz)
             new_dz = dz
             while z + 2 * new_dz <= self.length_span and new_dz != 0:
                 if new_dz != dz:
                     dz = new_dz
-                    (h_2dz, h_dz, NOP2dz) = self.get_operators(2 * dz)
-                    (h_dz, h_dz_2, NOPdz) = self.get_operators(dz)
+                    h_2dz, h_dz, NOP2dz = self.get_operators(2 * dz)
+                    h_dz, h_dz_2, NOPdz = self.get_operators(dz)
 
                 uf = symmetrical_SSFM_step(uz, h_dz_2, NOPdz)
                 uf = symmetrical_SSFM_step(uf, h_dz_2, NOPdz)
@@ -2166,20 +2166,22 @@ def decompose_stokes_rotation(J, non_unitary=False):
         except AssertionError:
             logger.error(
                 f"Input matrix J is not unitary: I={I}",
-        )
+            )
             raise AssertionError
 
     # First determine phase rotation
     theta = torch.angle(J[0, 0])
 
     # Remove phase shift
-    J_rot = torch.as_tensor([[torch.exp(-1j * theta), 0], [0, torch.exp(1j * theta)]]) @ J
+    J_rot = (
+        torch.as_tensor([[torch.exp(-1j * theta), 0], [0, torch.exp(1j * theta)]]) @ J
+    )
 
     # Determine phi
     if non_unitary:
         # Special care for non_unitary case since we can end up outside the definition of arccos
         eps = 1e-8
-        phi = torch.acos(torch.clamp(J_rot[0,0].real, -1 + eps, 1 - eps))
+        phi = torch.acos(torch.clamp(J_rot[0, 0].real, -1 + eps, 1 - eps))
     else:
         phi = torch.acos(J_rot[0, 0].real)
 
