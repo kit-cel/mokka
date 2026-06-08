@@ -159,12 +159,14 @@ authors = [
     {name = "Andrej Rode", email = "rode@kit.edu"},
     {name = "Shrinivas Chimmalgi", email = "shrinivas.chimmalgi@kit.edu"},
     {name = "Benedikt Geiger", email = "benedikt.geiger@kit.edu"},
+    {name = "Vincent Lauinger", email="vincent.lauinger@kit.edu"},
     {name = "Laurent Schmalen", email = "laurent.schmalen@kit.edu"},
 ]
 maintainers = [
     {name = "Andrej Rode", email = "rode@kit.edu"},
     {name = "Shrinivas Chimmalgi", email = "shrinivas.chimmalgi@kit.edu"},
     {name = "Benedikt Geiger", email = "benedikt.geiger@kit.edu"},
+    {name = "Vincent Lauinger", email="vincent.lauinger@kit.edu"},
 ]
 license = {text = "Apache-2.0"}
 requires-python = "<4.0,>=3.10"
@@ -180,7 +182,7 @@ dependencies = [
 ]
 name = "mokka"
 readme = "README.md"
-version = "1.1.0"
+version = "1.2.0"
 description = "A machine learning toolbox for communications engineering"
 keywords = [
     "communications engineering",
