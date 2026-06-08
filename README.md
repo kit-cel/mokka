@@ -8,14 +8,45 @@ Most of the functionality currently is provided for the PyTorch machine learning
 
 ## Prerequisites
 
-This package leverages poetry for management of dependencies in a virtual environment. If you clone this repository you can install this package with all
-optional extras with `poetry install --all-extras`. Alternatively check which additional functionalities suit you in [pyproject.toml](./pyproject.toml).
+This package uses [UV](https://github.com/astral-sh/uv) for fast Python package management and virtual environments. UV is a modern alternative to pip/poetry that provides significantly faster dependency resolution and installation.
 
 ## Installation
 
-Either install the package from PyPI with `pip install mokka` or install it from this source directory with the help of poetry `poetry install --all-extras`.
-To install the development dependencies (formatters, documentation checkers, etc.) install mokka with `poetry install --with=dev`.
-Please check the poetry documentation for other commands and usage of poetry [here](https://python-poetry.org/docs/).
+### From PyPI (Recommended)
+
+```bash
+# Install using UV (fastest method)
+uv add mokka
+
+# Or using pip (traditional method)
+pip install mokka
+```
+
+### From Source
+
+```bash
+# Clone the repository
+git clone https://github.com/kit-cel/mokka.git
+cd mokka
+
+# Install with all optional extras using UV
+uv sync --all-extras
+
+# Or install specific extras (e.g., torch + dev tools)
+uv sync --extra torch --extra dev
+```
+
+### Development Setup
+
+```bash
+# Install development dependencies
+uv sync --with=dev
+
+# Install pre-commit hooks for code quality
+pre-commit install
+```
+
+For more advanced usage, refer to the [UV documentation](https://github.com/astral-sh/uv).
 
 ## Usage
 
@@ -25,9 +56,35 @@ constellation mappers and demappers implemented with and compatible to the PyTor
 
 ## Development
 
-In order to allow for consistent development we use pre-commit to check formatting and documentation of source code before creating commits. To install required tools for development specify option `[dev]` during installation of mokka. E.g. if you are installing in editable mode from the git root of this repository you can run `pip install ".[torch,dev]"` to install dependencies for running mokka with torch and development tools.
+For consistent development, we use pre-commit hooks to check code formatting and documentation before commits. The project has been updated to use UV for faster dependency management.
 
-To install the required pre-commit hooks you run `pre-commit install` from the git root, this will use the `.pre-commit.yml` file in the root to install hooks required to check formatting and documentation of newly commited source code.
+### Development Installation
+
+```bash
+# Install in development mode with UV
+uv sync --editable --extra torch --extra dev
+
+# Install pre-commit hooks
+pre-commit install
+```
+
+### Common Development Commands
+
+```bash
+# Run tests with coverage
+uv run pytest --cov=src --cov-report=xml
+
+# Format code
+uv run ruff format
+
+# Lint code
+uv run ruff check
+
+# Type checking
+uv run mypy src
+```
+
+The pre-commit hooks will automatically run formatting and linting checks on each commit. For more information about the development workflow, see the [Contributing Guide](CONTRIBUTING.md).
 
 ## Acknowledgment
 This  work  has  received  funding  from  the  European  Research Council (ERC) under the European Union's Horizon2020 research and innovation programme (grant agreement No. 101001899).
